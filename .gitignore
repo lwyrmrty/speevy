@@ -5,6 +5,7 @@ out
 coverage
 .vercel
 .tools
+*.tsbuildinfo
 
 .env
 .env.local

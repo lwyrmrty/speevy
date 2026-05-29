@@ -1,0 +1,288 @@
+'use server';
+
+import { createHash } from 'node:crypto';
+
+import { z } from 'zod';
+
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { createSupabaseServerClient } from '@/lib/supabase/server';
+
+const statusSchema = z.enum(['draft', 'potential', 'active', 'past']);
+const opportunityAssetKindSchema = z.enum(['thumbnail', 'logo']);
+const opportunityAssetsBucket = 'opportunity-assets';
+
+const sectionSchema = z.object({
+  clientId: z.number(),
+  type: z.string().min(1),
+  position: z.number().int().nonnegative(),
+  data: z.record(z.string(), z.unknown()),
+});
+
+const saveOpportunitySchema = z.object({
+  slug: z.string().trim().min(1),
+  status: statusSchema,
+  title: z.string().trim().min(1),
+  teaser: z.string().trim().optional(),
+  stage: z.string().trim().optional(),
+  targetRaise: z.string().trim().optional(),
+  minimumCheck: z.string().trim().optional(),
+  carry: z.string().trim().optional(),
+  managementFee: z.string().trim().optional(),
+  ndaRequired: z.boolean(),
+  watermarkEnabled: z.boolean(),
+  passwordProtected: z.boolean(),
+  password: z.string().optional(),
+  thumbnailStorageKey: z.string().optional(),
+  logoStorageKey: z.string().optional(),
+  sections: z.array(sectionSchema),
+});
+
+export type SaveOpportunityPayload = z.infer<typeof saveOpportunitySchema>;
+
+export type SaveOpportunityResult =
+  | { status: 'success'; opportunityId: string; savedAt: string }
+  | { status: 'error'; message: string };
+
+export type UploadOpportunityAssetResult =
+  | { status: 'success'; storageKey: string; signedUrl: string }
+  | { status: 'error'; message: string };
+
+async function getAdminProfile() {
+  const serverSupabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await serverSupabase.auth.getUser();
+
+  if (!user) {
+    return { profile: null, error: 'Sign in as an admin before saving.' };
+  }
+
+  const adminSupabase = createSupabaseAdminClient();
+  const { data: profile, error: profileError } = await adminSupabase
+    .from('profiles')
+    .select('id, role')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (profileError || profile?.role !== 'admin') {
+    return { profile: null, error: 'Only admins can save opportunities.' };
+  }
+
+  return { profile, error: null };
+}
+
+function moneyToCents(value?: string) {
+  const digits = value?.replace(/[^\d]/g, '') ?? '';
+  return digits ? Number(digits) * 100 : null;
+}
+
+function percentToBasisPoints(value?: string) {
+  const cleaned = value?.replace(/[^\d.]/g, '') ?? '';
+  return cleaned ? Math.round(Number(cleaned) * 100) : null;
+}
+
+function passwordHash(password: string) {
+  return createHash('sha256').update(password).digest('hex');
+}
+
+function safeFileName(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+async function ensureOpportunityAssetsBucket() {
+  const supabase = createSupabaseAdminClient();
+  const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+
+  if (listError) {
+    return { supabase, error: listError.message };
+  }
+
+  if (buckets?.some((bucket) => bucket.name === opportunityAssetsBucket)) {
+    return { supabase, error: null };
+  }
+
+  const { error: createError } = await supabase.storage.createBucket(opportunityAssetsBucket, {
+    public: false,
+    fileSizeLimit: '10MB',
+    allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'],
+  });
+
+  return { supabase, error: createError?.message ?? null };
+}
+
+export async function uploadOpportunityAsset(
+  formData: FormData,
+): Promise<UploadOpportunityAssetResult> {
+  const { error: authError } = await getAdminProfile();
+
+  if (authError) {
+    return { status: 'error', message: authError };
+  }
+
+  const slug = z.string().trim().min(1).safeParse(formData.get('slug'));
+  const kind = opportunityAssetKindSchema.safeParse(formData.get('kind'));
+  const file = formData.get('file');
+
+  if (!slug.success || !kind.success || !(file instanceof File)) {
+    return { status: 'error', message: 'Choose an image to upload.' };
+  }
+
+  if (!file.type.startsWith('image/')) {
+    return { status: 'error', message: 'Only image uploads are supported here.' };
+  }
+
+  const { supabase, error: bucketError } = await ensureOpportunityAssetsBucket();
+
+  if (bucketError) {
+    return { status: 'error', message: bucketError };
+  }
+
+  const storageKey = `opportunities/${slug.data}/${kind.data}-${Date.now()}-${safeFileName(file.name)}`;
+  const { error: uploadError } = await supabase.storage
+    .from(opportunityAssetsBucket)
+    .upload(storageKey, file, {
+      contentType: file.type,
+      upsert: true,
+    });
+
+  if (uploadError) {
+    return { status: 'error', message: uploadError.message };
+  }
+
+  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    .from(opportunityAssetsBucket)
+    .createSignedUrl(storageKey, 60 * 60);
+
+  if (signedUrlError || !signedUrlData?.signedUrl) {
+    return {
+      status: 'error',
+      message: signedUrlError?.message ?? 'Image uploaded, but preview URL failed.',
+    };
+  }
+
+  return {
+    status: 'success',
+    storageKey,
+    signedUrl: signedUrlData.signedUrl,
+  };
+}
+
+export async function saveOpportunityDraft(
+  payload: SaveOpportunityPayload,
+): Promise<SaveOpportunityResult> {
+  const parsed = saveOpportunitySchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return {
+      status: 'error',
+      message: parsed.error.issues[0]?.message ?? 'Invalid opportunity payload.',
+    };
+  }
+
+  const { profile, error: authError } = await getAdminProfile();
+
+  if (authError || !profile) {
+    return { status: 'error', message: authError ?? 'Only admins can save opportunities.' };
+  }
+
+  const adminSupabase = createSupabaseAdminClient();
+  const data = parsed.data;
+  const password = data.password?.trim() ?? '';
+
+  const savedAt = new Date().toISOString();
+  const { data: existingOpportunity } = await adminSupabase
+    .from('opportunities')
+    .select('id, password_hash')
+    .eq('slug', data.slug)
+    .maybeSingle();
+
+  if (
+    data.passwordProtected
+    && !password
+    && !existingOpportunity?.password_hash
+  ) {
+    return {
+      status: 'error',
+      message: 'Enter a password before saving a password-protected opportunity.',
+    };
+  }
+
+  const opportunityFields = {
+    slug: data.slug,
+    title: data.title,
+    company_name: data.title,
+    teaser: data.teaser || null,
+    status: data.status,
+    minimum_investment_cents: moneyToCents(data.minimumCheck),
+    target_allocation_cents: moneyToCents(data.targetRaise),
+    stage: data.stage || null,
+    carry_percentage_basis_points: percentToBasisPoints(data.carry),
+    management_fee_basis_points: percentToBasisPoints(data.managementFee),
+    nda_required: data.ndaRequired,
+    watermark_enabled: data.watermarkEnabled,
+    password_protected: data.passwordProtected,
+    thumbnail_storage_key: data.thumbnailStorageKey || null,
+    logo_storage_key: data.logoStorageKey || null,
+    password_hash: data.passwordProtected
+      ? (password ? passwordHash(password) : existingOpportunity?.password_hash)
+      : null,
+    updated_at: savedAt,
+  };
+
+  const opportunityMutation = existingOpportunity
+    ? adminSupabase
+        .from('opportunities')
+        .update(opportunityFields)
+        .eq('id', existingOpportunity.id)
+        .select('id')
+        .single()
+    : adminSupabase
+        .from('opportunities')
+        .insert({
+          ...opportunityFields,
+          created_by_profile_id: profile.id,
+        })
+        .select('id')
+        .single();
+
+  const { data: opportunity, error: opportunityError } = await opportunityMutation;
+
+  if (opportunityError || !opportunity) {
+    return {
+      status: 'error',
+      message: opportunityError?.message ?? 'Could not save opportunity.',
+    };
+  }
+
+  const { error: deleteSectionsError } = await adminSupabase
+    .from('opportunity_sections')
+    .delete()
+    .eq('opportunity_id', opportunity.id);
+
+  if (deleteSectionsError) {
+    return { status: 'error', message: deleteSectionsError.message };
+  }
+
+  if (data.sections.length > 0) {
+    const { error: sectionsError } = await adminSupabase
+      .from('opportunity_sections')
+      .insert(
+        data.sections.map((section) => ({
+          opportunity_id: opportunity.id,
+          type: section.type,
+          position: section.position,
+          data: section.data,
+          updated_at: savedAt,
+        })),
+      );
+
+    if (sectionsError) {
+      return { status: 'error', message: sectionsError.message };
+    }
+  }
+
+  return { status: 'success', opportunityId: opportunity.id, savedAt };
+}

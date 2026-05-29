@@ -735,6 +735,132 @@ strong {
   padding-right: 15px;
 }
 
+.floating-savebar {
+  z-index: 50;
+  grid-column-gap: 12px;
+  grid-row-gap: 12px;
+  background-color: var(--white);
+  border: 1px solid #e2e2e0;
+  border-radius: 14px;
+  align-items: center;
+  padding: 10px 10px 10px 16px;
+  display: flex;
+  position: fixed;
+  inset: auto 24px 24px auto;
+  box-shadow: 0 10px 30px #0000001f;
+}
+
+.floating-savebar-status {
+  color: var(--body-color);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
+  max-width: 260px;
+}
+
+.floating-savebar .button[disabled] {
+  opacity: .6;
+  cursor: wait;
+}
+
+.floating-savebar .preview-button {
+  background-color: #f7f7f5;
+  color: var(--body-color);
+}
+
+.floating-savebar .preview-button:hover {
+  background-color: #ecece8;
+}
+
+.tiptap-wrapper {
+  background-color: var(--white);
+  border: 1px solid #e2e2e0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.textstyles-row {
+  grid-column-gap: 6px;
+  grid-row-gap: 6px;
+  border-bottom: 1px solid #e2e2e0;
+  align-items: center;
+  padding: 8px;
+  display: flex;
+}
+
+.textstyle-block {
+  background-color: #f7f7f5;
+  border: 1.5px solid #e2e2e0;
+  border-radius: 8px;
+  justify-content: center;
+  align-items: center;
+  width: 32px;
+  height: 32px;
+  display: flex;
+}
+
+.textstyle-block:hover {
+  border-color: var(--green);
+}
+
+.textstyle-block.active {
+  background-color: #f7f7f5;
+  border-color: var(--green);
+}
+
+.textsyle-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.textsyle-icon.h {
+  width: 14px;
+}
+
+.textstyle-divider {
+  background-color: #e2e2e0;
+  width: 1px;
+  height: 24px;
+  margin-left: 4px;
+  margin-right: 4px;
+}
+
+.textdoc-content {
+  min-height: 180px;
+  padding: 16px;
+}
+
+.textdoc-content-inner {
+  outline: none;
+  min-height: 148px;
+}
+
+.textdoc-content-inner p {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.textdoc-content-inner ul,
+.textdoc-content-inner ol {
+  margin-top: 0;
+  margin-bottom: 12px;
+  padding-left: 24px;
+}
+
+.textdoc-content-inner ul {
+  list-style-type: disc;
+}
+
+.textdoc-content-inner ol {
+  list-style-type: decimal;
+}
+
+.textdoc-content-inner li {
+  display: list-item;
+  margin-bottom: 6px;
+}
+
 .dollaramount {
   font-size: 15px;
   font-weight: 600;
@@ -815,10 +941,17 @@ strong {
 }
 
 .interestedcheck {
+  color: inherit;
+  text-align: left;
+  background: transparent;
   border-bottom: 1.5px solid var(--lite);
+  border-left: 0;
+  border-right: 0;
+  border-top: 0;
   cursor: pointer;
   justify-content: space-between;
   align-items: center;
+  width: 100%;
   height: 50px;
   margin-bottom: -1.5px;
   padding-left: 15px;
@@ -909,7 +1042,9 @@ strong {
 }
 
 .confirmbutton {
+  border: 0;
   background-color: var(--green);
+  width: 100%;
   height: 45px;
   color: var(--white);
   justify-content: center;
@@ -922,6 +1057,31 @@ strong {
 
 .confirmbutton:hover {
   background-color: #13867b;
+}
+
+.confirmbutton:disabled {
+  background-color: var(--lite);
+  color: #8c8f8a;
+  cursor: not-allowed;
+}
+
+.confirmbutton:disabled:hover {
+  background-color: var(--lite);
+}
+
+.interest-toast {
+  z-index: 1000;
+  color: var(--body-color);
+  background-color: #fff;
+  border: 1.5px solid var(--green);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: 0 12px 30px #0013051f;
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
 }
 
 .checkicon {
@@ -2108,7 +2268,7 @@ strong {
 
 .draggingblock {
   opacity: .4;
-  cursor: grabbing;
+  cursor: grab;
   justify-content: center;
   align-items: center;
   height: 30px;

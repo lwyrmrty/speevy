@@ -67,7 +67,7 @@ export const accreditationStatus = pgEnum('accreditation_status', [
 
 export const opportunityStatus = pgEnum('opportunity_status', [
   'potential',
-  'upcoming',
+  'draft',
   'active',
   'past',
 ]);
@@ -199,13 +199,21 @@ export const opportunities = pgTable('opportunities', {
   companyName: text('company_name').notNull(),
   teaser: text('teaser'),
 
-  status: opportunityStatus('status').notNull().default('potential'),
+  status: opportunityStatus('status').notNull().default('draft'),
 
   minimumInvestmentCents: bigint('minimum_investment_cents', { mode: 'bigint' }),
   targetAllocationCents: bigint('target_allocation_cents', { mode: 'bigint' }),
 
+  stage: text('stage'),
+  carryPercentageBasisPoints: integer('carry_percentage_basis_points'),
+  managementFeeBasisPoints: integer('management_fee_basis_points'),
+  thumbnailStorageKey: text('thumbnail_storage_key'),
+  logoStorageKey: text('logo_storage_key'),
   ndaRequired: boolean('nda_required').notNull().default(false),
   ndaTemplateId: text('nda_template_id'),
+  watermarkEnabled: boolean('watermark_enabled').notNull().default(false),
+  passwordProtected: boolean('password_protected').notNull().default(false),
+  passwordHash: text('password_hash'),
 
   visibleToAllApprovedLps: boolean('visible_to_all_approved_lps').notNull().default(false),
 

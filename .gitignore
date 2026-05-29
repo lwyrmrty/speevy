@@ -1,0 +1,13 @@
+.DS_Store
+node_modules
+.next
+out
+coverage
+.vercel
+.tools
+
+.env
+.env.local
+.env.*.local
+
+drizzle

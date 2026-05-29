@@ -1,0 +1,193 @@
+# Speevy — Cursor Project Rules
+
+## Product
+Speevy ("Speedy SPV") is Harpoon Ventures' internal LP portal for pre-marketing
+and managing SPV opportunities. Used by Harpoon admins and invited LPs only.
+Not a multi-tenant SaaS. Not publicly marketed. No self-signup.
+
+Harpoon does $100M+/year in deal volume through SPVs. This product is the
+presentation layer behind that volume — invest in quality accordingly. But
+"quality" means polished, fast, and trustworthy, not flexible-for-the-sake-of-it.
+
+## Users
+- **Admins** (Harpoon team): create/edit opportunities, manage LPs, view interest signals
+- **LPs** (invited only): verify identity, view opportunities they have access to, indicate interest
+
+## Regulatory Posture
+Operating under Reg D 506(b). LPs are invited, no general solicitation.
+Accreditation is collected and stored but self-attested unless a deal requires 506(c).
+KYC + accreditation handled by Persona or Parallel Markets (TBD — do not lock in
+without explicit decision).
+
+## Stack
+- Next.js 15, App Router, TypeScript strict mode
+- React Server Components by default
+- Tailwind CSS + shadcn/ui as the component base
+- Supabase: Postgres + Auth + Storage + Row Level Security
+- Drizzle ORM — no raw SQL strings in app code (migrations are SQL files)
+- Server Actions for mutations, Zod for input validation at every boundary
+- Dropbox Sign API for NDAs and subscription documents
+- Loops for transactional email and Supabase Auth SMTP
+- Tiptap (constrained toolbar) for rich text inside section components
+- dnd-kit for section reordering
+- Recharts for charts
+- PostHog for product analytics (no LP PII in events)
+- Vercel for hosting
+
+## Architecture Rules
+- **Default to Server Components.** A component becomes a Client Component
+  only when it needs state, effects, or browser APIs.
+- When a Client Component needs data, pass it as props from a Server Component
+  parent. Do not fetch LP or opportunity data from the client.
+- All authorization lives in two places: (1) Supabase RLS policies,
+  (2) Server Actions / route handlers. Never in React components.
+- Every mutation goes through a Server Action with Zod-validated input.
+- All file access uses short-lived signed URLs. No public buckets.
+
+## UI Source of Truth
+- For every new page or feature, the user will provide the page UI as HTML/CSS
+  exported or adapted from Webflow. Treat that HTML/CSS as the visual source of
+  truth for the page shell and any elements the user wants to keep custom.
+- Go page by page: first implement the provided HTML/CSS as static markup that
+  preserves layout, class names, spacing, and styling intent, then hook it up to
+  typed data, Server Actions, auth, and RLS-backed access rules.
+- Do not invent new page UI from scratch unless the user explicitly asks for it.
+- Do not preemptively replace HTML elements with component-library widgets.
+  The user will call out specific elements to upgrade — dropdowns, modals,
+  sidepanels, tables, etc. — and specify whether to use shadcn/ui or Untitled UI.
+- Expect a mixed page model: Webflow HTML/CSS for designed static sections, and
+  real Untitled UI/shadcn components only for the specific interactive or data
+  elements the user selects for replacement.
+- When swapping an element, keep the surrounding page static and make the
+  smallest styling adjustments needed so the component matches the page. Do not
+  rewrite neighboring Webflow markup just because a component is being replaced.
+- shadcn/ui: interactive controls (dropdowns, dialogs, sheets, forms, toasts).
+- Untitled UI: admin tables and data-heavy list views.
+- When the user links to or asks for an Untitled UI component, use Untitled UI's
+  actual React component source via their CLI/manual source. Do not treat
+  Untitled UI as design inspiration or recreate the look from scratch.
+- Light Speevy styling adjustments are allowed after adding the real Untitled UI
+  component, but preserve the component's accessibility and behavior.
+- When the user asks to add a table to a page, use Untitled UI's React
+  `Alternating fills 01` table example as the default starting point:
+  `TableCard.Root`, `TableCard.Header`, `Table`, sortable `Table.Head`
+  columns, alternating `odd:bg-secondary` rows, `Badge`/`BadgeWithDot`
+  status cells, row action `ButtonUtility` icons, and
+  `PaginationPageMinimalCenter`. Add the real Untitled UI component files and
+  dependencies first if they are not already present.
+- Auth pages: use Untitled UI's `login-split-image` split-view layout as the
+  starting point for login and invite acceptance. Speevy has no public signup;
+  any "signup" UI is an invite-link flow for an already-invited LP/admin.
+- If the provided HTML conflicts with accessibility, responsiveness, or security
+  requirements, keep the visual direction and make the smallest practical fix.
+
+## Supabase Client Usage — IMPORTANT
+There are two Supabase clients. Use the right one.
+
+- **User-session client** (anon key + user JWT): default for everything.
+  RLS does the authorization work. If the policy says no, the query returns
+  no rows. Use this for all reads on behalf of an LP or admin.
+- **Service role client** (service_role key): bypasses RLS entirely.
+  Only allowed in:
+  (a) Webhook handlers, AFTER validating the webhook signature
+  (b) Audit log inserts (audit_log has no insert policy by design)
+  (c) Explicitly admin-only Server Actions where the FIRST LINE validates
+      that the caller is an admin via `is_admin()` or equivalent
+
+Never expose the service role through anything an LP can call.
+Never put the service role key in a Client Component or in any code that
+ships to the browser.
+
+## Opportunity Page Model
+Opportunities are composed of **section components**, not arbitrary blocks.
+The available section types are a fixed registry. Admins choose which sections
+to include and reorder them (dnd-kit). Each section has a structured data
+schema (Zod). Rich text inside sections uses Tiptap with a constrained toolbar
+(bold, italic, lists, links, pull quote).
+
+Initial section registry (extend deliberately, never casually):
+- HeroSection (company name, logo, one-liner, key stats)
+- OverviewSection (rich text + optional pull quotes)
+- TeamSection (structured: name, role, bio, photo, LinkedIn)
+- MarketSection (rich text + optional chart embed)
+- TractionSection (metrics grid + chart)
+- FinancialsSection (structured numbers + chart)
+- TermsSection (round size, valuation, minimum check, Harpoon's allocation)
+- MediaSection (image gallery or video embed)
+- DocumentsSection (linked files, can be NDA-gated)
+
+Do NOT build a generic block editor. Do NOT allow free-form layout.
+Do NOT add new section types without an explicit request.
+
+## Opportunity Statuses
+`potential` | `upcoming` | `active` | `past`
+LPs can indicate interest on anything except `past`.
+
+## Interest Flow
+Two-step: (1) LP indicates interest, (2) LP provides dollar amount.
+If opportunity has `minimum_investment_cents`, amount must meet or exceed it.
+Interest is one row per LP per opportunity, transitioning through statuses.
+
+## Access Control
+- LPs see only opportunities where they have an `opportunity_access` row
+  OR the opportunity is flagged `visible_to_all_approved_lps`.
+- LPs see opportunity sections (the body) only if they've satisfied the
+  NDA gate when `nda_required = true`.
+- LPs can see title and teaser of an NDA-gated opportunity before signing
+  (so they know what they're being asked to sign for). RLS enforces this
+  by gating sections, not the opportunity row itself.
+- Enforce all of the above in RLS policies AND in Server Actions.
+  Belt and suspenders.
+
+## Money
+- All currency stored as `bigint` cents. Never floats. Never integers in dollars.
+- Format on display. Parse on input. The DB column is always `*_cents`.
+
+## Security Non-Negotiables
+- Every read of an opportunity body by an LP writes an `audit_log` row
+  (lp_id, opportunity_id, ip, user_agent, timestamp).
+- Every admin write to `lps`, `opportunities`, `opportunity_access`, or
+  `interests` writes an `audit_log` row in the same DB transaction.
+- No LP PII in logs, PostHog events, or error reports. Scrub before sending.
+- All Server Actions validate the caller's role before doing anything.
+- Write Vitest tests that simulate LP and admin database connections
+  and assert RLS prevents unauthorized reads/writes.
+- Per-user dynamic watermark on opportunity pages (LP email + timestamp,
+  tiled, low opacity). This is a deterrent and attribution tool, not a
+  screenshot prevention mechanism — do not pretend otherwise in code or UI.
+- Admin promotion (`profiles.role = 'admin'`) happens ONLY via explicit SQL
+  migration. There must be NO application code path that sets role to 'admin'.
+
+## Code Conventions
+- TypeScript strict. No `any`. No `as` casts without a comment explaining why.
+- Drizzle schema is the source of truth for DB types. Infer, don't duplicate.
+- Components live in `components/`. Section components in `components/sections/`.
+- Server Actions in `app/**/actions.ts`, colocated with the route that uses them.
+- Shared data access in `lib/db/` — all DB queries go through typed functions here.
+- Use shadcn/ui primitives. Don't write Tailwind walls — extract components.
+- No new top-level dependency without asking first.
+
+## What Not to Build
+- No multi-tenancy, no orgs table, no plan tiers, no billing.
+- No public signup, no marketing pages, no SEO concerns.
+- No white-label abstraction. Harpoon branding is hard-coded.
+- No generic block editor. Section registry only.
+- No client-side data fetching for LP or opportunity data.
+- No "soft delete" flags except where the schema already has them
+  (use `archived_at`, `revoked_at`, `withdrawn_at` — not `is_deleted`).
+
+## Build Order
+Work in this sequence. Do not start a phase until the previous one is shipped
+and tested.
+1. Auth + LP invitation + KYC/accreditation flow
+2. Admin LP management (table, approve/reject, document upload, audit trail)
+3. Opportunity CRUD with section registry (admin side only)
+4. LP-facing opportunity list + detail with access control + NDA gate
+5. Interest indication flow (two-step, with minimum check)
+6. Email notifications + admin interest dashboard
+7. Polish, analytics, internal launch
+
+## When in Doubt
+Ask before scaffolding. Prefer fewer files, sharper abstractions, and
+explicit code over clever code. This is a system that handles real money
+and real relationships — boring and correct beats clever and impressive.

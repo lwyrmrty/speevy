@@ -1,0 +1,16 @@
+---
+description: Speevy production deployment flow
+alwaysApply: true
+---
+
+# Production Deployment
+
+- Production deploys should go through a clean Git commit from the `speevy` app directory.
+- Before committing or deploying, run:
+  - `PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run build`
+  - `PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run typecheck`
+- Include only production-relevant files. Do not commit `supabase/.temp`, `.next`, `*.tsbuildinfo`, unrelated Webflow export HTML, or unreferenced generated image variants unless the app references them.
+- If the app uses new Supabase columns or migrations, verify production Supabase has the required schema before deploying.
+- Preferred deployment flow: push `main` to the configured Git remote and let Vercel auto-deploy from GitHub.
+- If no Git remote is configured, ask for the GitHub repository URL, then add it as `origin` and push `main`.
+- If the project is not GitHub-connected to Vercel, ask for the Vercel project/linking details before attempting a direct `vercel --prod` deploy.

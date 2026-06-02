@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -46,7 +46,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "drizzle-kit": "latest",
-    "eslint": "latest",
+    "eslint": "^9.39.4",
     "eslint-config-next": "latest",
     "postcss": "latest",
     "tailwindcss": "latest",

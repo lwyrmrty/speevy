@@ -9,6 +9,8 @@ import { INVESTOR_SECTORS } from '@/lib/investor-request';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
+export const dynamic = 'force-dynamic';
+
 type SectionRow = {
   type: string;
   position: number;
@@ -482,7 +484,8 @@ export default async function OpportunityPreviewPage({
     redirect('/onboarding');
   }
 
-  const { data: opportunity } = await supabase
+  const contentClient = isAdmin ? supabase : serverSupabase;
+  const { data: opportunity } = await contentClient
     .from('opportunities')
     .select(
       `
@@ -499,13 +502,19 @@ export default async function OpportunityPreviewPage({
         management_fee_basis_points,
         thumbnail_storage_key,
         logo_storage_key,
-        status
+        status,
+        password_protected
       `,
     )
     .eq('slug', opportunityId)
+    .is('archived_at', null)
     .maybeSingle();
 
   if (!opportunity || (!isAdmin && !['active', 'potential'].includes(opportunity.status))) {
+    notFound();
+  }
+
+  if (!isAdmin && opportunity.password_protected) {
     notFound();
   }
 
@@ -520,7 +529,7 @@ export default async function OpportunityPreviewPage({
     });
   }
 
-  const { data: sections } = await supabase
+  const { data: sections } = await contentClient
     .from('opportunity_sections')
     .select('type, position, data')
     .eq('opportunity_id', opportunity.id)

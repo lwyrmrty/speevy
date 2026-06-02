@@ -9,6 +9,8 @@ import { INVESTOR_SECTORS } from '@/lib/investor-request';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Opportunities | Speevy',
 };

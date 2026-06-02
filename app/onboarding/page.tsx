@@ -7,6 +7,8 @@ export const metadata: Metadata = {
   title: 'Onboarding | Speevy',
 };
 
+export const dynamic = 'force-dynamic';
+
 // TEMPORARY placeholder for invited LPs who have signed in but are not yet
 // approved (status: onboarding / pending_review). The real KYC + accreditation
 // onboarding flow is a later phase.

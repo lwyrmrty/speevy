@@ -6,8 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit --incremental false",
+    "verify": "pnpm typecheck && pnpm lint && pnpm build",
+    "check:production": "node scripts/check-production.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
@@ -46,7 +48,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "drizzle-kit": "latest",
-    "eslint": "latest",
+    "eslint": "^9.39.4",
     "eslint-config-next": "latest",
     "postcss": "latest",
     "tailwindcss": "latest",

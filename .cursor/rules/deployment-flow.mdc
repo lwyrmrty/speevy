@@ -7,10 +7,8 @@ alwaysApply: true
 
 - Work from the app repo at `/Users/matvogels/Documents/Speevy/speevy`.
 - Production deploys should be based on a clean Git commit, not the dirty working tree.
-- Before committing or deploying, run these checks from any directory:
-  - `PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run build`
-  - `PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run typecheck`
-- If typecheck fails because `.next/types/**` files are missing, run the build first, then rerun typecheck.
+- Before committing or deploying, run `pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run verify`.
+- After production deploys, run `pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run check:production`.
 - Include only production-relevant files. Do not commit `supabase/.temp`, `.next`, `*.tsbuildinfo`, `.vercel`, unrelated Webflow export HTML, or unreferenced generated image variants unless the app references them.
 - `pnpm-workspace.yaml` contains required pnpm `allowBuilds` approvals for Vercel/pnpm installs. Keep it when changing package/install behavior.
 
@@ -25,16 +23,17 @@ alwaysApply: true
 
 # Deployment Paths
 
-- Preferred if GitHub auth is configured: push `main` to `https://github.com/lwyrmrty/speevy.git` and let Vercel auto-deploy if the project is GitHub-connected.
-- GitHub auth was not available in this agent environment over HTTPS or SSH, so direct Vercel deployment may be needed.
-- For direct Vercel deploys, use a clean temporary worktree from the commit to avoid uploading untracked Webflow artifacts:
+- Preferred path: push a branch to `https://github.com/lwyrmrty/speevy.git`, open a PR, wait for CI (`pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm build`), merge to `main`, and let Vercel auto-deploy from GitHub.
+- Do not deploy from a dirty working tree. GitHub should be the source of truth for production.
+- Direct Vercel deploys are emergency-only. If GitHub auth is unavailable and a direct deploy is unavoidable, use a clean temporary worktree from the commit to avoid uploading untracked Webflow artifacts:
   - `git -C "/Users/matvogels/Documents/Speevy/speevy" worktree add --detach "/Users/matvogels/Documents/Speevy/speevy-vercel-deploy" HEAD`
   - Link it with the Vercel link command above, replacing `--cwd` with the worktree path.
   - If cloud `vercel deploy --prod` hangs at `UNKNOWN` with no logs, use prebuilt deploy.
-- Prebuilt deploy flow that worked:
+- Prebuilt deploy flow requires env injection:
   - Parse `/Users/matvogels/Documents/Speevy/speevy/.env.local` in a script and spawn `pnpm dlx vercel build --prod --yes --project "speevy" --scope "glance-ef7ebb74" --cwd "/Users/matvogels/Documents/Speevy/speevy-vercel-deploy"` with those env values injected; never echo the values.
+  - Do not rely on `vercel pull` alone for prebuilt output. Production env names may exist in Vercel while the generated local `.vercel/.env.production.local` is empty/redacted for values needed by dynamic server routes.
   - Then run `pnpm dlx vercel deploy --prebuilt --prod --yes --project "speevy" --scope "glance-ef7ebb74" --cwd "/Users/matvogels/Documents/Speevy/speevy-vercel-deploy"`.
-  - Verify with `pnpm dlx vercel inspect <deployment-url> --scope "glance-ef7ebb74"` and an HTTP 200 check for `https://speevy.vercel.app`.
+  - Verify with `pnpm dlx vercel inspect <deployment-url> --scope "glance-ef7ebb74"` and `pnpm run check:production`.
   - Remove the temporary worktree after deployment because it contains `.vercel` metadata/env files.
 
 # Supabase

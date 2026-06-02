@@ -11,6 +11,9 @@ alwaysApply: true
   - `PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run typecheck`
 - Include only production-relevant files. Do not commit `supabase/.temp`, `.next`, `*.tsbuildinfo`, unrelated Webflow export HTML, or unreferenced generated image variants unless the app references them.
 - If the app uses new Supabase columns or migrations, verify production Supabase has the required schema before deploying.
+- Vercel production project: `speevy` under scope/team `glance-ef7ebb74` (`Glance`), production URL `https://speevy.vercel.app`.
+- To inspect Vercel directly, use `pnpm dlx vercel projects list --scope "glance-ef7ebb74"`, `pnpm dlx vercel project inspect speevy --scope "glance-ef7ebb74"`, and `pnpm dlx vercel ls speevy --scope "glance-ef7ebb74"`.
+- To link this checkout back to Vercel, run `pnpm dlx vercel link --yes --scope "glance-ef7ebb74" --project "speevy" --cwd "/Users/matvogels/Documents/Speevy/speevy"`.
 - When asked about production status or deployment, check Vercel directly when dashboard/browser or CLI access is available; do not assume GitHub state is the only source of truth.
 - Preferred deployment flow, if Vercel is GitHub-connected: push `main` to the configured Git remote and let Vercel auto-deploy from GitHub.
 - If no Git remote is configured, ask for the GitHub repository URL, then add it as `origin` and push `main`.

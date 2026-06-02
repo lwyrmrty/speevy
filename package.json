@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit --incremental false",
+    "verify": "pnpm typecheck && pnpm lint && pnpm build",
+    "check:production": "node scripts/check-production.mjs"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",

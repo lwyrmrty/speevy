@@ -5,17 +5,40 @@ alwaysApply: true
 
 # Production Deployment
 
-- Production deploys should go through a clean Git commit from the `speevy` app directory.
-- Before committing or deploying, run:
+- Work from the app repo at `/Users/matvogels/Documents/Speevy/speevy`.
+- Production deploys should be based on a clean Git commit, not the dirty working tree.
+- Before committing or deploying, run these checks from any directory:
   - `PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run build`
   - `PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run typecheck`
-- Include only production-relevant files. Do not commit `supabase/.temp`, `.next`, `*.tsbuildinfo`, unrelated Webflow export HTML, or unreferenced generated image variants unless the app references them.
-- If the app uses new Supabase columns or migrations, verify production Supabase has the required schema before deploying.
+- If typecheck fails because `.next/types/**` files are missing, run the build first, then rerun typecheck.
+- Include only production-relevant files. Do not commit `supabase/.temp`, `.next`, `*.tsbuildinfo`, `.vercel`, unrelated Webflow export HTML, or unreferenced generated image variants unless the app references them.
+- `pnpm-workspace.yaml` contains required pnpm `allowBuilds` approvals for Vercel/pnpm installs. Keep it when changing package/install behavior.
+
+# Vercel
+
 - Vercel production project: `speevy` under scope/team `glance-ef7ebb74` (`Glance`), production URL `https://speevy.vercel.app`.
 - To inspect Vercel directly, use `pnpm dlx vercel projects list --scope "glance-ef7ebb74"`, `pnpm dlx vercel project inspect speevy --scope "glance-ef7ebb74"`, and `pnpm dlx vercel ls speevy --scope "glance-ef7ebb74"`.
 - To link this checkout back to Vercel, run `pnpm dlx vercel link --yes --scope "glance-ef7ebb74" --project "speevy" --cwd "/Users/matvogels/Documents/Speevy/speevy"`.
 - When asked about production status or deployment, check Vercel directly when dashboard/browser or CLI access is available; do not assume GitHub state is the only source of truth.
-- Preferred deployment flow, if Vercel is GitHub-connected: push `main` to the configured Git remote and let Vercel auto-deploy from GitHub.
-- If no Git remote is configured, ask for the GitHub repository URL, then add it as `origin` and push `main`.
-- If the project is not GitHub-connected to Vercel, use direct Vercel access to inspect the project and deployment settings before attempting `vercel --prod`.
-- If Vercel CLI is unavailable or the repo is not linked with `.vercel/project.json`, use the Vercel dashboard/browser access to confirm the project, production branch, root directory, environment variables, and latest deployment.
+- If Vercel CLI credentials are missing, run `pnpm dlx vercel whoami`; complete the device login when prompted.
+- Vercel env vars may list as present but pull as empty/redacted. Do not print secrets. Check only presence/length.
+
+# Deployment Paths
+
+- Preferred if GitHub auth is configured: push `main` to `https://github.com/lwyrmrty/speevy.git` and let Vercel auto-deploy if the project is GitHub-connected.
+- GitHub auth was not available in this agent environment over HTTPS or SSH, so direct Vercel deployment may be needed.
+- For direct Vercel deploys, use a clean temporary worktree from the commit to avoid uploading untracked Webflow artifacts:
+  - `git -C "/Users/matvogels/Documents/Speevy/speevy" worktree add --detach "/Users/matvogels/Documents/Speevy/speevy-vercel-deploy" HEAD`
+  - Link it with the Vercel link command above, replacing `--cwd` with the worktree path.
+  - If cloud `vercel deploy --prod` hangs at `UNKNOWN` with no logs, use prebuilt deploy.
+- Prebuilt deploy flow that worked:
+  - Parse `/Users/matvogels/Documents/Speevy/speevy/.env.local` in a script and spawn `pnpm dlx vercel build --prod --yes --project "speevy" --scope "glance-ef7ebb74" --cwd "/Users/matvogels/Documents/Speevy/speevy-vercel-deploy"` with those env values injected; never echo the values.
+  - Then run `pnpm dlx vercel deploy --prebuilt --prod --yes --project "speevy" --scope "glance-ef7ebb74" --cwd "/Users/matvogels/Documents/Speevy/speevy-vercel-deploy"`.
+  - Verify with `pnpm dlx vercel inspect <deployment-url> --scope "glance-ef7ebb74"` and an HTTP 200 check for `https://speevy.vercel.app`.
+  - Remove the temporary worktree after deployment because it contains `.vercel` metadata/env files.
+
+# Supabase
+
+- Production Supabase project id used in this app is `nzjbssgsjuatzpxaqtxi`.
+- If the app uses new Supabase columns or migrations, verify production Supabase has the required schema before deploying.
+- Known required production columns include `opportunities.origination_fee_cents`, `opportunities.opportunity_sectors`, and LP preference fields on `lps`.

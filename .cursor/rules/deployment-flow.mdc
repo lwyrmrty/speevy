@@ -11,6 +11,8 @@ alwaysApply: true
   - `PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN=false pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run typecheck`
 - Include only production-relevant files. Do not commit `supabase/.temp`, `.next`, `*.tsbuildinfo`, unrelated Webflow export HTML, or unreferenced generated image variants unless the app references them.
 - If the app uses new Supabase columns or migrations, verify production Supabase has the required schema before deploying.
-- Preferred deployment flow: push `main` to the configured Git remote and let Vercel auto-deploy from GitHub.
+- When asked about production status or deployment, check Vercel directly when dashboard/browser or CLI access is available; do not assume GitHub state is the only source of truth.
+- Preferred deployment flow, if Vercel is GitHub-connected: push `main` to the configured Git remote and let Vercel auto-deploy from GitHub.
 - If no Git remote is configured, ask for the GitHub repository URL, then add it as `origin` and push `main`.
-- If the project is not GitHub-connected to Vercel, ask for the Vercel project/linking details before attempting a direct `vercel --prod` deploy.
+- If the project is not GitHub-connected to Vercel, use direct Vercel access to inspect the project and deployment settings before attempting `vercel --prod`.
+- If Vercel CLI is unavailable or the repo is not linked with `.vercel/project.json`, use the Vercel dashboard/browser access to confirm the project, production branch, root directory, environment variables, and latest deployment.

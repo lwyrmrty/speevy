@@ -986,15 +986,6 @@ strong {
   background-color: var(--green);
 }
 
-.checkboxtoggle.checked:after {
-  content: "✓";
-  color: var(--white);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-  display: block;
-}
-
 .checkboxtoggle.checked:hover {
   background-color: #138a7e;
 }

@@ -17,6 +17,7 @@ const fallbackScript = `
   const clear = bulkActions.querySelector('[data-bulk-clear]');
   const rows = () => Array.from(table.querySelectorAll('[data-investor-row]'));
   const checkboxes = () => Array.from(table.querySelectorAll('[data-investor-checkbox]'));
+  const checkIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64" class="checkicon"><g fill="none" fill-rule="evenodd"><path fill="currentColor" d="M21.546 5.111a1.5 1.5 0 0 1 0 2.121L10.303 18.475a1.6 1.6 0 0 1-2.263 0L2.454 12.89a1.5 1.5 0 1 1 2.121-2.121l4.596 4.596L19.424 5.111a1.5 1.5 0 0 1 2.122 0Z"></path></g></svg>';
   const originalRows = rows();
   originalRows.forEach((row, index) => {
     row.dataset.originalIndex = String(index);
@@ -32,6 +33,7 @@ const fallbackScript = `
     checkboxes().forEach((checkbox) => {
       const isSelected = selected.has(checkbox.dataset.investorId);
       checkbox.classList.toggle('checked', isSelected);
+      checkbox.innerHTML = isSelected ? checkIcon : '';
       checkbox.setAttribute('aria-pressed', String(isSelected));
       const label = checkbox.getAttribute('aria-label') || '';
       checkbox.setAttribute('aria-label', label.replace(/^Select|^Deselect/, isSelected ? 'Deselect' : 'Select'));
@@ -67,6 +69,7 @@ const fallbackScript = `
       selected.clear();
       if (shouldSelectAll) allIds.forEach((id) => selected.add(id));
       selectAll.classList.toggle('checked', shouldSelectAll);
+      selectAll.innerHTML = shouldSelectAll ? checkIcon : '';
       selectAll.setAttribute('aria-pressed', String(shouldSelectAll));
       sync();
     });
@@ -77,6 +80,7 @@ const fallbackScript = `
       selected.clear();
       if (selectAll) {
         selectAll.classList.remove('checked');
+        selectAll.innerHTML = '';
         selectAll.setAttribute('aria-pressed', 'false');
       }
       sync();

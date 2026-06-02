@@ -8,7 +8,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const saveInterestSchema = z.object({
   opportunityId: z.string().uuid(),
-  amountCents: z.number().int().positive(),
+  amountCents: z.number().int().positive().nullable(),
 });
 
 export type SaveOpportunityInterestResult =
@@ -50,12 +50,18 @@ export async function saveOpportunityInterest(
     .eq('id', parsed.data.opportunityId)
     .maybeSingle();
 
-  if (
-    !opportunity
-    || opportunity.published_at === null
-    || !['active', 'potential'].includes(opportunity.status)
-  ) {
+  if (!opportunity || !['active', 'potential', 'past'].includes(opportunity.status)) {
     return { status: 'error', message: 'This opportunity is not currently accepting interest.' };
+  }
+
+  if (['active', 'potential'].includes(opportunity.status)) {
+    if (opportunity.published_at === null) {
+      return { status: 'error', message: 'This opportunity is not currently accepting interest.' };
+    }
+
+    if (parsed.data.amountCents === null) {
+      return { status: 'error', message: 'Enter a valid interest amount.' };
+    }
   }
 
   const { error } = await supabase

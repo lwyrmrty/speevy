@@ -10,9 +10,6 @@ import {
 } from '@/app/admin/investors/actions';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import {
-  INVESTMENT_RANGE_VALUES,
-  INVESTOR_SECTORS,
-  formatInvestmentRange,
   type InvestorSector,
 } from '@/lib/investor-request';
 
@@ -27,6 +24,12 @@ export type AdminInvestorRow = {
   investmentRangeMax: number | null;
   joinedAt: string;
   interestedCount: number;
+  interestedOpportunityTitles: string[];
+  interestedOpportunities: {
+    title: string;
+    amountCents: number | string | null;
+    logoUrl: string | null;
+  }[];
 };
 
 const statusLabels: Record<AdminInvestorRow['status'], string> = {
@@ -97,6 +100,11 @@ function formatCheckRange(minCents: number | null, maxCents: number | null) {
   return <span className="dimish">Not set</span>;
 }
 
+function formatInterestAmount(cents: number | string | null) {
+  const amount = typeof cents === 'string' ? Number(cents) : cents;
+  return compactDollarValue(amount);
+}
+
 function formatJoinedDate(value: string) {
   const date = new Date(value);
 
@@ -146,11 +154,69 @@ function SectorIconRow({ sectors }: { sectors: InvestorSector[] }) {
   );
 }
 
-function sectorsMatch(left: InvestorSector[], right: InvestorSector[]) {
-  if (left.length !== right.length) return false;
+function InterestedOpportunitiesTooltip({ investor }: { investor: AdminInvestorRow }) {
+  const countLabel = (
+    <>
+      {investor.interestedCount} <span className="dimish">
+        {investor.interestedCount === 1 ? 'opportunity' : 'opportunities'}
+      </span>
+    </>
+  );
 
-  const rightSet = new Set(right);
-  return left.every((sector) => rightSet.has(sector));
+  if (investor.interestedOpportunityTitles.length === 0) {
+    return <div>{countLabel}</div>;
+  }
+
+  return (
+    <div className="speevy-tooltip" aria-label={investor.interestedOpportunityTitles.join(', ')}>
+      <div>{countLabel}</div>
+      <div className="speevy-tooltip-panel speevy-tooltip-panel-list" role="tooltip">
+        <div className="speevy-tooltip-title">Interested in</div>
+        {investor.interestedOpportunityTitles.map((title) => (
+          <div key={title} className="speevy-tooltip-list-item">
+            {title}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InterestedOpportunitiesList({ opportunities }: { opportunities: AdminInvestorRow['interestedOpportunities'] }) {
+  if (opportunities.length === 0) {
+    return (
+      <div className="speevy-interest-opportunity-empty">
+        No interested opportunities yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="speevy-interest-opportunity-list">
+      {opportunities.map((opportunity) => {
+        const amount = formatInterestAmount(opportunity.amountCents);
+
+        return (
+          <div key={opportunity.title} className="speevy-interest-opportunity-row">
+            <div className="speevy-interest-opportunity-logo">
+              <img
+                src={opportunity.logoUrl ?? '/webflow/images/frontierSec.webp'}
+                loading="lazy"
+                alt=""
+                className="fullimage"
+              />
+            </div>
+            <div className="speevy-interest-opportunity-main">
+              <div className="cellname">{opportunity.title}</div>
+              <div className="dimsmall">
+                {amount || 'No amount shared'}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function InvestorSlideout({
@@ -165,37 +231,22 @@ function InvestorSlideout({
   const [fullName, setFullName] = useState(investor.fullName ?? '');
   const [entityName, setEntityName] = useState(investor.entityName ?? '');
   const [status, setStatus] = useState<AdminInvestorRow['status']>(investor.status);
-  const [selectedSectors, setSelectedSectors] = useState<InvestorSector[]>(investor.sectors);
   const [message, setMessage] = useState<UpdateInvestorResult | null>(null);
   const [isPending, startTransition] = useTransition();
-  const minRangeValue = investor.investmentRangeMin === null
-    ? ''
-    : String(Math.round(investor.investmentRangeMin / 100));
-  const maxRangeValue = investor.investmentRangeMax === null
-    ? ''
-    : String(Math.round(investor.investmentRangeMax / 100));
-  const [investmentRangeMin, setInvestmentRangeMin] = useState(minRangeValue);
-  const [investmentRangeMax, setInvestmentRangeMax] = useState(maxRangeValue);
   const hasChanges = fullName.trim() !== (investor.fullName ?? '').trim()
     || entityName.trim() !== (investor.entityName ?? '').trim()
-    || status !== investor.status
-    || investmentRangeMin !== minRangeValue
-    || investmentRangeMax !== maxRangeValue
-    || !sectorsMatch(selectedSectors, investor.sectors);
-
-  function toggleSector(sector: InvestorSector) {
-    setMessage(null);
-    setSelectedSectors((current) =>
-      current.includes(sector)
-        ? current.filter((item) => item !== sector)
-        : [...current, sector],
-    );
-  }
+    || status !== investor.status;
 
   function handleSubmit(formData: FormData) {
     if (!hasChanges) return;
 
-    selectedSectors.forEach((sector) => formData.append('sectors', sector));
+    investor.sectors.forEach((sector) => formData.append('sectors', sector));
+    if (investor.investmentRangeMin !== null) {
+      formData.set('investmentRangeMin', String(Math.round(investor.investmentRangeMin / 100)));
+    }
+    if (investor.investmentRangeMax !== null) {
+      formData.set('investmentRangeMax', String(Math.round(investor.investmentRangeMax / 100)));
+    }
     startTransition(async () => {
       const result = await updateInvestor(formData);
       setMessage(result);
@@ -236,6 +287,29 @@ function InvestorSlideout({
           <input type="hidden" name="id" value={investor.id} />
 
           <div className="fieldblock">
+            <label htmlFor="Investor-Status" className="fieldlabel">Status</label>
+            <select
+              id="Investor-Status"
+              name="status"
+              className="textfield w-input"
+              value={status}
+              onChange={(event) => {
+                setMessage(null);
+                setStatus(event.target.value as AdminInvestorRow['status']);
+              }}
+            >
+              {Object.entries(statusLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="fieldblock">
+            <div className="fieldlabel">Opportunities Interested</div>
+            <InterestedOpportunitiesList opportunities={investor.interestedOpportunities} />
+          </div>
+
+          <div className="fieldblock">
             <label htmlFor="Investor-Full-Name" className="fieldlabel">Name</label>
             <input
               id="Investor-Full-Name"
@@ -268,84 +342,33 @@ function InvestorSlideout({
           </div>
 
           <div className="fieldblock">
-            <label htmlFor="Investor-Status" className="fieldlabel">Status</label>
-            <select
-              id="Investor-Status"
-              name="status"
-              className="textfield w-input"
-              value={status}
-              onChange={(event) => {
-                setMessage(null);
-                setStatus(event.target.value as AdminInvestorRow['status']);
-              }}
-            >
-              {Object.entries(statusLabels).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="fieldblock">
             <div className="fieldlabel">Sectors Interested</div>
             <div className="pillswrapper">
-              {INVESTOR_SECTORS.map((sector) => {
-                const selected = selectedSectors.includes(sector);
-
-                return (
-                  <button
-                    key={sector}
-                    type="button"
-                    className={`selectpill w-inline-block${selected ? ' selected' : ''}`}
-                    onClick={() => toggleSector(sector)}
-                  >
+              {investor.sectors.length > 0 ? (
+                investor.sectors.map((sector) => (
+                  <div key={sector} className="selectpill selected w-inline-block">
                     <div className="alignrow aligncenter">
-                      <div className={`selectlink-icon${selected ? ' selected' : ''}`}>
+                      <div className="selectlink-icon selected">
                         <WebflowSectorIcon sector={sector} />
                       </div>
                       <div>{sector}</div>
                     </div>
-                  </button>
-                );
-              })}
+                  </div>
+                ))
+              ) : (
+                <div className="dimish">No sectors selected.</div>
+              )}
             </div>
           </div>
 
           <div className="fieldrow">
             <div className="fieldblock">
-              <label htmlFor="Investor-Min-Range" className="fieldlabel">Min Check</label>
-              <select
-                id="Investor-Min-Range"
-                name="investmentRangeMin"
-                className="textfield w-input"
-                value={investmentRangeMin}
-                onChange={(event) => {
-                  setMessage(null);
-                  setInvestmentRangeMin(event.target.value);
-                }}
-              >
-                <option value="">Not set</option>
-                {INVESTMENT_RANGE_VALUES.map((value) => (
-                  <option key={value} value={value}>{formatInvestmentRange(value)}</option>
-                ))}
-              </select>
+              <div className="fieldlabel">Min Check</div>
+              <div className="textfield readonly">{formatCheckRange(investor.investmentRangeMin, null)}</div>
             </div>
             <div className="fieldblock">
-              <label htmlFor="Investor-Max-Range" className="fieldlabel">Max Check</label>
-              <select
-                id="Investor-Max-Range"
-                name="investmentRangeMax"
-                className="textfield w-input"
-                value={investmentRangeMax}
-                onChange={(event) => {
-                  setMessage(null);
-                  setInvestmentRangeMax(event.target.value);
-                }}
-              >
-                <option value="">Not set</option>
-                {INVESTMENT_RANGE_VALUES.map((value) => (
-                  <option key={value} value={value}>{formatInvestmentRange(value)}</option>
-                ))}
-              </select>
+              <div className="fieldlabel">Max Check</div>
+              <div className="textfield readonly">{formatCheckRange(null, investor.investmentRangeMax)}</div>
             </div>
           </div>
 
@@ -577,11 +600,7 @@ export function AdminInvestorsTable({ investors }: { investors: AdminInvestorRow
                   </div>
                 </div>
                 <div className="tablecell">
-                  <div>
-                    {investor.interestedCount} <span className="dimish">
-                      {investor.interestedCount === 1 ? 'opportunity' : 'opportunities'}
-                    </span>
-                  </div>
+                  <InterestedOpportunitiesTooltip investor={investor} />
                 </div>
                 <div className="tablecell wide">
                   <SectorIconRow sectors={investor.sectors} />

@@ -29,6 +29,11 @@ type InvestorRow = {
 
 type InterestRow = {
   lp_id: string;
+  amount_cents: number | string | null;
+  opportunities: {
+    title: string;
+    logo_storage_key: string | null;
+  }[] | null;
 };
 
 function normalizeSectors(value: unknown) {
@@ -67,22 +72,74 @@ export default async function AdminInvestorsPage() {
 
   const investors = (investorsData ?? []) as InvestorRow[];
   const investorIds = investors.map((investor) => investor.id);
+  const signedAssetUrl = async (storageKey: string | null) => {
+    if (!storageKey) return null;
+    const { data } = await supabase.storage
+      .from('opportunity-assets')
+      .createSignedUrl(storageKey, 60 * 60);
+    return data?.signedUrl ?? null;
+  };
   const { data: interestsData } = investorIds.length
     ? await supabase
       .from('interests')
-      .select('lp_id')
+      .select(`
+        lp_id,
+        amount_cents,
+        opportunities (
+          title,
+          logo_storage_key
+        )
+      `)
       .in('lp_id', investorIds)
       .neq('status', 'withdrawn')
     : { data: [] };
 
   const interestTotals = new Map<string, number>();
+  const interestTitles = new Map<string, string[]>();
+  const interestDetails = new Map<
+    string,
+    {
+      title: string;
+      amountCents: number | string | null;
+      logoStorageKey: string | null;
+    }[]
+  >();
   investorIds.forEach((id) => interestTotals.set(id, 0));
+  investorIds.forEach((id) => interestTitles.set(id, []));
+  investorIds.forEach((id) => interestDetails.set(id, []));
   ((interestsData ?? []) as InterestRow[]).forEach((interest) => {
     const total = interestTotals.get(interest.lp_id);
     if (total === undefined) return;
 
     interestTotals.set(interest.lp_id, total + 1);
+    const titles = interestTitles.get(interest.lp_id);
+    const details = interestDetails.get(interest.lp_id);
+    const opportunity = interest.opportunities?.[0];
+    if (titles && opportunity?.title) {
+      titles.push(opportunity.title);
+    }
+    if (details && opportunity?.title) {
+      details.push({
+        title: opportunity.title,
+        amountCents: interest.amount_cents,
+        logoStorageKey: opportunity.logo_storage_key,
+      });
+    }
   });
+  const logoStorageKeys = Array.from(new Set(
+    Array.from(interestDetails.values())
+      .flat()
+      .map((interest) => interest.logoStorageKey)
+      .filter((key): key is string => Boolean(key)),
+  ));
+  const logoUrls = new Map(
+    await Promise.all(
+      logoStorageKeys.map(async (storageKey) => [
+        storageKey,
+        await signedAssetUrl(storageKey),
+      ] as const),
+    ),
+  );
   const rows: AdminInvestorRow[] = investors.map((investor) => ({
     id: investor.id,
     email: investor.email,
@@ -94,6 +151,12 @@ export default async function AdminInvestorsPage() {
     investmentRangeMax: investor.investment_range_max_cents,
     joinedAt: investor.created_at,
     interestedCount: interestTotals.get(investor.id) ?? 0,
+    interestedOpportunityTitles: interestTitles.get(investor.id) ?? [],
+    interestedOpportunities: (interestDetails.get(investor.id) ?? []).map((interest) => ({
+      title: interest.title,
+      amountCents: interest.amountCents,
+      logoUrl: interest.logoStorageKey ? logoUrls.get(interest.logoStorageKey) ?? null : null,
+    })),
   }));
 
   return (

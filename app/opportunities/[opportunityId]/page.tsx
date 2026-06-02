@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
+import { DocumentViewerDrawer } from '@/components/webflow/document-viewer-drawer';
 import { OpportunityInterestCard } from '@/components/webflow/opportunity-interest-card';
 import { SectionMiniNav } from '@/components/webflow/section-mini-nav';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
@@ -60,6 +61,40 @@ function HomeIcon() {
   );
 }
 
+function WebsiteIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" className="socialicon">
+      <path d="M2 12H22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(90 12 12)" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function LinkedInIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" className="socialicon">
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M9.42857 8.96884H13.1429V10.8193C13.6783 9.75524 15.0503 8.79887 17.1114 8.79887C21.0623 8.79887 22 10.9167 22 14.8028V22H18V15.6878C18 13.4748 17.4646 12.2266 16.1029 12.2266C14.2143 12.2266 13.4286 13.5722 13.4286 15.6878V22H9.42857V8.96884ZM2.57143 21.83H6.57143V8.79887H2.57143V21.83ZM7.14286 4.54958C7.14286 4.88439 7.07635 5.21593 6.94712 5.52526C6.81789 5.83458 6.62848 6.11565 6.3897 6.3524C6.15092 6.58915 5.86745 6.77695 5.55547 6.90508C5.24349 7.0332 4.90911 7.09915 4.57143 7.09915C4.23374 7.09915 3.89937 7.0332 3.58739 6.90508C3.27541 6.77695 2.99193 6.58915 2.75315 6.3524C2.51437 6.11565 2.32496 5.83458 2.19574 5.52526C2.06651 5.21593 2 4.88439 2 4.54958C2 3.87339 2.27092 3.22489 2.75315 2.74675C3.23539 2.26862 3.88944 2 4.57143 2C5.25341 2 5.90747 2.26862 6.3897 2.74675C6.87194 3.22489 7.14286 3.87339 7.14286 4.54958Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" className="socialicon">
+      <path
+        d="M13.8076 10.4686L20.8808 2H19.2046L13.063 9.3532L8.15769 2H2.5L9.91779 13.1193L2.5 22H4.17621L10.6619 14.2348L15.8423 22H21.5L13.8072 10.4686H13.8076ZM11.5118 13.2173L10.7602 12.1101L4.78017 3.29968H7.35474L12.1807 10.4099L12.9323 11.5172L19.2054 20.7594H16.6309L11.5118 13.2177V13.2173Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function centsToNumber(value: number | string | null) {
   if (value === null) return 0;
   return typeof value === 'string' ? Number(value) : value;
@@ -107,6 +142,17 @@ function basisPointsToPercent(value: number | null) {
   if (value === null) return '';
   const percent = value / 100;
   return `${Number.isInteger(percent) ? percent : percent.toFixed(2)}%`;
+}
+
+function externalUrl(value: string | null) {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `https://${trimmed}`;
 }
 
 function firstString(value: unknown) {
@@ -263,11 +309,18 @@ function RichTextSection({ section }: { section: SectionRow }) {
   );
 }
 
-function LinksSection({ section }: { section: SectionRow }) {
+function LinksSection({
+  section,
+  assetUrls,
+}: {
+  section: SectionRow;
+  assetUrls: Record<string, string>;
+}) {
   const title = sectionTitle(section);
   const description = firstString(section.data['Links-Description']);
   const linkTitles = asStringArray(section.data['Link-Title']);
   const linkUrls = asStringArray(section.data['Link-Url']);
+  const linkImageStorageKeys = asStringArray(section.data['Link-Image-Storage-Key']);
 
   return (
     <div id={sectionAnchor(section)} className="contentsection">
@@ -276,6 +329,7 @@ function LinksSection({ section }: { section: SectionRow }) {
       <div className="articlelist">
         {linkTitles.map((linkTitle, index) => {
           const href = linkUrls[index] || '#';
+          const imageStorageKey = linkImageStorageKeys[index] ?? '';
           const domain = href === '#'
             ? 'Link'
             : new URL(href.startsWith('http') ? href : `https://${href}`).hostname.replace(/^www\./, '');
@@ -284,7 +338,12 @@ function LinksSection({ section }: { section: SectionRow }) {
             <div className="articleitem" key={`${linkTitle}-${index}`}>
               <a href={href} target="_blank" rel="noreferrer" className="pagecard articlecard w-inline-block">
                 <div className="articlethumbnail">
-                  <img src="/webflow/images/link-alt.svg" loading="lazy" alt="" className="fullimage" />
+                  <img
+                    src={assetUrls[imageStorageKey] ?? '/webflow/images/link-alt.svg'}
+                    loading="lazy"
+                    alt=""
+                    className="fullimage"
+                  />
                 </div>
                 <div className="articlecontent">
                   <div className="articletitle">{linkTitle}</div>
@@ -299,32 +358,34 @@ function LinksSection({ section }: { section: SectionRow }) {
   );
 }
 
-function DocumentsSection({ section }: { section: SectionRow }) {
+function DocumentsSection({
+  section,
+  assetUrls,
+  watermarkEmail,
+}: {
+  section: SectionRow;
+  assetUrls: Record<string, string>;
+  watermarkEmail: string;
+}) {
   const title = sectionTitle(section);
   const description = firstString(section.data['Documents-Description']);
   const documents = asStringArray(section.data['Document-Title']);
+  const documentStorageKeys = asStringArray(section.data['Document-Storage-Key']);
+  const documentItems = documents.map((documentTitle, index) => {
+    const storageKey = documentStorageKeys[index] ?? '';
+
+    return {
+      title: documentTitle,
+      url: assetUrls[storageKey] ?? '',
+      fileType: storageKey.toLowerCase().endsWith('.docx') ? 'docx' as const : 'pdf' as const,
+    };
+  });
 
   return (
     <div id={sectionAnchor(section)} className="contentsection">
       <h1 className="contentheading">{title}</h1>
       {description ? <RichTextValue value={description} /> : null}
-      <div className="teamlist">
-        {documents.map((documentTitle, index) => (
-          <div className="documentitem" key={`${documentTitle}-${index}`}>
-            <a href="#" className="pagecard documents w-inline-block">
-              <div className="documentsrow">
-                <div className="documenticon">
-                  <img src="/webflow/images/pdficon.svg" loading="lazy" alt="" className="docsicon" />
-                </div>
-                <div>
-                  <div className="docname">{documentTitle}</div>
-                  <div className="docdate">Last Updated: Just now</div>
-                </div>
-              </div>
-            </a>
-          </div>
-        ))}
-      </div>
+      <DocumentViewerDrawer documents={documentItems} watermarkEmail={watermarkEmail} />
     </div>
   );
 }
@@ -437,13 +498,17 @@ function TeamLikeSection({
 function OpportunitySection({
   section,
   assetUrls,
+  watermarkEmail,
 }: {
   section: SectionRow;
   assetUrls: Record<string, string>;
+  watermarkEmail: string;
 }) {
   if (section.type === 'richContent') return <RichTextSection section={section} />;
-  if (section.type === 'links') return <LinksSection section={section} />;
-  if (section.type === 'documents') return <DocumentsSection section={section} />;
+  if (section.type === 'links') return <LinksSection section={section} assetUrls={assetUrls} />;
+  if (section.type === 'documents') {
+    return <DocumentsSection section={section} assetUrls={assetUrls} watermarkEmail={watermarkEmail} />;
+  }
   if (section.type === 'team' || section.type === 'investors') {
     return <TeamLikeSection section={section} assetUrls={assetUrls} />;
   }
@@ -497,6 +562,9 @@ export default async function OpportunityPreviewPage({
         origination_fee_cents,
         carry_percentage_basis_points,
         management_fee_basis_points,
+        website_url,
+        linkedin_url,
+        twitter_url,
         thumbnail_storage_key,
         logo_storage_key,
         status
@@ -505,7 +573,7 @@ export default async function OpportunityPreviewPage({
     .eq('slug', opportunityId)
     .maybeSingle();
 
-  if (!opportunity || (!isAdmin && !['active', 'potential'].includes(opportunity.status))) {
+  if (!opportunity || (!isAdmin && !['active', 'potential', 'past'].includes(opportunity.status))) {
     notFound();
   }
 
@@ -542,7 +610,7 @@ export default async function OpportunityPreviewPage({
   const sectionAssetKeys = Array.from(new Set(
     orderedSections.flatMap((section) =>
       Object.entries(section.data).flatMap(([key, value]) =>
-        key.endsWith('Image-Storage-Key') ? asStringArray(value) : [],
+        key.endsWith('Storage-Key') ? asStringArray(value) : [],
       ),
     ),
   ));
@@ -560,6 +628,28 @@ export default async function OpportunityPreviewPage({
   const raiseLabel = compactRaiseAmount(opportunity.target_allocation_cents);
   const minimumLabel = compactMinAmount(opportunity.minimum_investment_cents);
   const originationFeeLabel = compactMinAmount(opportunity.origination_fee_cents);
+  const showDealTerms = opportunity.status !== 'past';
+  const hasPrimaryStats = Boolean(raiseLabel || originationFeeLabel || showDealTerms);
+  const socialLinks = [
+    {
+      href: externalUrl(opportunity.website_url),
+      label: 'Website',
+      className: 'sociallink website web w-inline-block',
+      icon: <WebsiteIcon />,
+    },
+    {
+      href: externalUrl(opportunity.linkedin_url),
+      label: 'LinkedIn',
+      className: 'sociallink w-inline-block',
+      icon: <LinkedInIcon />,
+    },
+    {
+      href: externalUrl(opportunity.twitter_url),
+      label: 'Twitter / X',
+      className: 'sociallink x w-inline-block',
+      icon: <XIcon />,
+    },
+  ].flatMap((link) => (link.href ? [{ ...link, href: link.href }] : []));
   const sectionNavItems = orderedSections.map((section) => ({
     href: `#${sectionAnchor(section)}`,
     label: sectionTitle(section),
@@ -630,38 +720,85 @@ export default async function OpportunityPreviewPage({
                       <div className="heroheading">{opportunity.title}</div>
                       <div className="herosubheading">{opportunity.teaser}</div>
                       <div className="hero-pill-stack">
-                        <OpportunitySectorPills sectors={opportunity.opportunity_sectors} variant="lite" />
-                        <div className="herostats-row">
-                          <div className="alignrow">
-                            {raiseLabel ? (
-                              <div className="pillstat litebg">
-                                <div>{raiseLabel}</div>
+                        {socialLinks.length > 0 ? (
+                          <>
+                            <div className="herostats-row">
+                              <div className="alignrow">
+                                {socialLinks.map((link) => (
+                                  <a
+                                    key={link.label}
+                                    href={link.href}
+                                    className="pillstat litebg link hero-social-link w-inline-block"
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    aria-label={link.label}
+                                  >
+                                    {link.icon}
+                                  </a>
+                                ))}
                               </div>
-                            ) : null}
-                            <div className="pillstat litebg">
-                              <div>{carry ? `${carry} Carry` : '0% Carry'}</div>
                             </div>
-                            <div className="pillstat litebg">
-                              <div>{managementFee ? `${managementFee} Fee` : 'No Fee'}</div>
-                            </div>
-                            {originationFeeLabel ? (
+                            <div className="hero-social-divider" />
+                          </>
+                        ) : null}
+                        {opportunity.status === 'past' ? (
+                          <div className="herostats-row past-hero-meta-row">
+                            <OpportunitySectorPills sectors={opportunity.opportunity_sectors} variant="lite" />
+                            <div className="alignrow">
                               <div className="pillstat litebg">
-                                <div><span className="dimish">Origination:</span> {originationFeeLabel}</div>
+                                <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
                               </div>
-                            ) : null}
+                              {minimumLabel ? (
+                                <div className="pillstat litebg">
+                                  <div><span className="dimish">Min:</span> {minimumLabel}</div>
+                                </div>
+                              ) : null}
+                            </div>
                           </div>
-                          <div className="statdivider" />
-                          <div className="alignrow">
-                            <div className="pillstat litebg">
-                              <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
-                            </div>
-                            {minimumLabel ? (
-                              <div className="pillstat litebg">
-                                <div><span className="dimish">Min:</span> {minimumLabel}</div>
+                        ) : (
+                          <>
+                            <OpportunitySectorPills sectors={opportunity.opportunity_sectors} variant="lite" />
+                            <div className="herostats-row">
+                              {hasPrimaryStats ? (
+                                <>
+                                  <div className="alignrow">
+                                    {raiseLabel ? (
+                                      <div className="pillstat litebg">
+                                        <div>{raiseLabel}</div>
+                                      </div>
+                                    ) : null}
+                                    {showDealTerms ? (
+                                      <>
+                                        <div className="pillstat litebg">
+                                          <div>{carry ? `${carry} Carry` : '0% Carry'}</div>
+                                        </div>
+                                        <div className="pillstat litebg">
+                                          <div>{managementFee ? `${managementFee} Fee` : 'No Fee'}</div>
+                                        </div>
+                                      </>
+                                    ) : null}
+                                    {originationFeeLabel ? (
+                                      <div className="pillstat litebg">
+                                        <div><span className="dimish">Origination:</span> {originationFeeLabel}</div>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <div className="statdivider" />
+                                </>
+                              ) : null}
+                              <div className="alignrow">
+                                <div className="pillstat litebg">
+                                  <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
+                                </div>
+                                {minimumLabel ? (
+                                  <div className="pillstat litebg">
+                                    <div><span className="dimish">Min:</span> {minimumLabel}</div>
+                                  </div>
+                                ) : null}
                               </div>
-                            ) : null}
-                          </div>
-                        </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -672,6 +809,7 @@ export default async function OpportunityPreviewPage({
                   key={`${section.type}-${section.position}`}
                   section={section}
                   assetUrls={sectionAssetUrls}
+                  watermarkEmail={user.email ?? ''}
                 />
               ))}
             </div>
@@ -685,49 +823,95 @@ export default async function OpportunityPreviewPage({
                     <div>
                       <div className="sideheading">{opportunity.title}</div>
                       <div className="sidesubheading">{opportunity.teaser}</div>
+                      {socialLinks.length > 0 ? (
+                        <div className="alignrow sidecard-social-row">
+                          {socialLinks.map((link) => (
+                            <a
+                              key={link.label}
+                              href={link.href}
+                              className={link.className}
+                              target="_blank"
+                              rel="noreferrer"
+                              aria-label={link.label}
+                            >
+                              {link.icon}
+                            </a>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
+                  <div className="sidecard-info-divider" />
                   <div className="div-block-2">
-                    <OpportunitySectorPills sectors={opportunity.opportunity_sectors} />
-                    <div className="alignrow wrap">
-                      {raiseLabel ? (
+                    {opportunity.status === 'past' ? (
+                      <div className="alignrow wrap">
+                        <OpportunitySectorPills sectors={opportunity.opportunity_sectors} />
                         <div className="pillstat">
-                          <div>{raiseLabel}</div>
+                          <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
                         </div>
-                      ) : null}
-                      <div className="pillstat">
-                        <div>{carry ? `${carry} Carry` : '0% Carry'}</div>
+                        {minimumLabel ? (
+                          <div className="pillstat">
+                            <div><span className="dimish">Min:</span> {minimumLabel}</div>
+                          </div>
+                        ) : null}
                       </div>
-                      <div className="pillstat">
-                        <div>{managementFee ? `${managementFee} Fee` : 'No Fee'}</div>
-                      </div>
-                      {originationFeeLabel ? (
-                        <div className="pillstat">
-                          <div><span className="dimish">Origination:</span> {originationFeeLabel}</div>
+                    ) : (
+                      <>
+                        <OpportunitySectorPills sectors={opportunity.opportunity_sectors} />
+                        {hasPrimaryStats ? (
+                          <div className="alignrow wrap">
+                            {raiseLabel ? (
+                              <div className="pillstat">
+                                <div>{raiseLabel}</div>
+                              </div>
+                            ) : null}
+                            {showDealTerms ? (
+                              <>
+                                <div className="pillstat">
+                                  <div>{carry ? `${carry} Carry` : '0% Carry'}</div>
+                                </div>
+                                <div className="pillstat">
+                                  <div>{managementFee ? `${managementFee} Fee` : 'No Fee'}</div>
+                                </div>
+                              </>
+                            ) : null}
+                            {originationFeeLabel ? (
+                              <div className="pillstat">
+                                <div><span className="dimish">Origination:</span> {originationFeeLabel}</div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <div className="alignrow wrap">
+                          <div className="pillstat">
+                            <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
+                          </div>
+                          {minimumLabel ? (
+                            <div className="pillstat">
+                              <div><span className="dimish">Min:</span> {minimumLabel}</div>
+                            </div>
+                          ) : null}
                         </div>
-                      ) : null}
-                    </div>
-                    <div className="alignrow wrap">
-                      <div className="pillstat">
-                        <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
-                      </div>
-                      {minimumLabel ? (
-                        <div className="pillstat">
-                          <div><span className="dimish">Min:</span> {minimumLabel}</div>
-                        </div>
-                      ) : null}
-                    </div>
+                      </>
+                    )}
                   </div>
                 </div>
                 <div className="cardblock reserve-interest-cardblock">
                   <div>
-                    <div className="sideheading">Reserve Interest</div>
-                    <div className="sidesubheading">Update the opportunity with your interest and estimated check</div>
+                    <div className="sideheading">
+                      {opportunity.status === 'past' ? 'Interested?' : 'Reserve Interest'}
+                    </div>
+                    <div className="sidesubheading">
+                      {opportunity.status === 'past'
+                        ? 'Let us know if you would like updates if this opportunity becomes available again.'
+                        : 'Update the opportunity with your interest and estimated check'}
+                    </div>
                   </div>
                   <div className="formblock w-form">
                     <OpportunityInterestCard
                       minimumInvestmentCents={centsToNumber(opportunity.minimum_investment_cents)}
                       opportunityId={opportunity.id}
+                      variant={opportunity.status === 'past' ? 'past' : 'standard'}
                     />
                   </div>
                 </div>

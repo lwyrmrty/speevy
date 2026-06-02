@@ -9,8 +9,21 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const statusSchema = z.enum(['draft', 'potential', 'active', 'past']);
-const opportunityAssetKindSchema = z.enum(['thumbnail', 'logo', 'section']);
+const opportunityAssetKindSchema = z.enum(['thumbnail', 'logo', 'section', 'document']);
 const opportunityAssetsBucket = 'opportunity-assets';
+const opportunityAssetMimeTypes = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'image/svg+xml',
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+const documentAssetMimeTypes = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
 
 const sectionSchema = z.object({
   clientId: z.number(),
@@ -32,6 +45,9 @@ const saveOpportunitySchema = z.object({
   originationFee: z.string().trim().optional(),
   carry: z.string().trim().optional(),
   managementFee: z.string().trim().optional(),
+  websiteUrl: z.string().trim().optional(),
+  linkedinUrl: z.string().trim().optional(),
+  twitterUrl: z.string().trim().optional(),
   ndaRequired: z.boolean(),
   watermarkEnabled: z.boolean(),
   passwordProtected: z.boolean(),
@@ -134,13 +150,19 @@ async function ensureOpportunityAssetsBucket() {
   }
 
   if (buckets?.some((bucket) => bucket.name === opportunityAssetsBucket)) {
-    return { supabase, error: null };
+    const { error: updateError } = await supabase.storage.updateBucket(opportunityAssetsBucket, {
+      public: false,
+      fileSizeLimit: '10MB',
+      allowedMimeTypes: opportunityAssetMimeTypes,
+    });
+
+    return { supabase, error: updateError?.message ?? null };
   }
 
   const { error: createError } = await supabase.storage.createBucket(opportunityAssetsBucket, {
     public: false,
     fileSizeLimit: '10MB',
-    allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'],
+    allowedMimeTypes: opportunityAssetMimeTypes,
   });
 
   return { supabase, error: createError?.message ?? null };
@@ -160,11 +182,20 @@ export async function uploadOpportunityAsset(
   const file = formData.get('file');
 
   if (!slug.success || !kind.success || !(file instanceof File)) {
-    return { status: 'error', message: 'Choose an image to upload.' };
+    return { status: 'error', message: 'Choose a file to upload.' };
   }
 
-  if (!file.type.startsWith('image/')) {
-    return { status: 'error', message: 'Only image uploads are supported here.' };
+  const isDocumentUpload = kind.data === 'document';
+  const isDocumentFile = documentAssetMimeTypes.includes(file.type);
+  const isImage = file.type.startsWith('image/');
+
+  if (isDocumentUpload ? !isDocumentFile : !isImage) {
+    return {
+      status: 'error',
+      message: isDocumentUpload
+        ? 'Only PDF or DOCX uploads are supported for documents.'
+        : 'Only image uploads are supported here.',
+    };
   }
 
   const { supabase, error: bucketError } = await ensureOpportunityAssetsBucket();
@@ -261,6 +292,9 @@ export async function saveOpportunityDraft(
     stage: data.stage || null,
     carry_percentage_basis_points: percentToBasisPoints(data.carry),
     management_fee_basis_points: percentToBasisPoints(data.managementFee),
+    website_url: data.websiteUrl || null,
+    linkedin_url: data.linkedinUrl || null,
+    twitter_url: data.twitterUrl || null,
     nda_required: data.ndaRequired,
     watermark_enabled: data.watermarkEnabled,
     password_protected: data.passwordProtected,

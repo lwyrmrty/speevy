@@ -42,38 +42,66 @@ export function OpportunityInterestCard({
   isGuest = false,
   minimumInvestmentCents,
   opportunityId,
+  variant = 'standard',
 }: {
   isGuest?: boolean;
   minimumInvestmentCents: number;
   opportunityId: string;
+  variant?: 'standard' | 'past';
 }) {
   const [interested, setInterested] = useState(false);
   const [amount, setAmount] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const isPast = variant === 'past';
   const amountCents = moneyToCents(amount);
   const belowMinimum = interested && amount && amountCents < minimumInvestmentCents;
-  const canConfirm = amountCents >= minimumInvestmentCents && !saving;
+  const canConfirm = (isPast || amountCents >= minimumInvestmentCents) && !saving;
 
   useEffect(() => {
-    if (!message) return;
+    if (!message || isPast) return;
 
     const timeout = window.setTimeout(() => setMessage(''), 3000);
     return () => window.clearTimeout(timeout);
-  }, [message]);
+  }, [isPast, message]);
+
+  async function savePastInterest() {
+    setSaving(true);
+    setMessage('');
+
+    const result = await saveOpportunityInterest({
+      opportunityId,
+      amountCents: null,
+    });
+
+    setSaving(false);
+
+    if (result.status === 'success') {
+      return;
+    }
+
+    setInterested(false);
+    setMessage(result.message);
+  }
 
   return (
     <div className={`interestwrapper${interested ? ' interested' : ''}`}>
       <button
         type="button"
         className={`interestedcheck${interested ? ' interested' : ''}`}
+        disabled={saving}
         onClick={() => {
-          setInterested((current) => !current);
+          const nextInterested = !interested;
+          setInterested(nextInterested);
           setMessage('');
+
+          if (isPast && nextInterested) {
+            void savePastInterest();
+          }
         }}
       >
-        <div>Interested?</div>
+        <div>{saving ? 'Saving...' : 'Interested?'}</div>
         <div className="interestchecks-row">
           {interested ? (
             <div className="checkboxtoggle checked">
@@ -84,7 +112,7 @@ export function OpportunityInterestCard({
           )}
         </div>
       </button>
-      {interested ? (
+      {interested && !isPast ? (
         <div className="interestamount-drawer">
           <div className="interestedamount-content">
             {isGuest ? (
@@ -122,7 +150,7 @@ export function OpportunityInterestCard({
           </div>
         </div>
       ) : null}
-      {interested ? (
+      {interested && !isPast ? (
         <button
           type="button"
           className="confirmbutton w-inline-block"

@@ -145,6 +145,11 @@ strong {
   border-color: var(--slate);
 }
 
+.docdate {
+  opacity: .5;
+  font-size: 81.6%;
+}
+
 .pagecard.articlecard {
   grid-column-gap: 5px;
   grid-row-gap: 5px;
@@ -159,6 +164,10 @@ strong {
 
 .pagecard.articlecard:hover {
   border-color: var(--green);
+}
+
+.articledomain {
+  opacity: .5;
 }
 
 .pagecard.fulllist-card {
@@ -507,6 +516,27 @@ strong {
 
 .pillstat.litebg.icon {
   padding-left: 3px;
+}
+
+.pillstat.litebg.hero-social-link {
+  grid-column-gap: 0;
+  grid-row-gap: 0;
+  width: 33px;
+  height: 33px;
+  padding: 0 !important;
+  justify-content: center;
+  align-items: center;
+  display: flex;
+  line-height: 1;
+}
+
+.pillstat.litebg.hero-social-link .socialicon {
+  flex: none;
+  display: block;
+}
+
+.hero-social-link:hover {
+  border-color: #ffffff26;
 }
 
 .pillstat.potential {
@@ -1026,6 +1056,15 @@ strong {
   border-color: var(--green);
 }
 
+.textfield.readonly {
+  color: var(--slate);
+  background-color: #fff;
+  align-items: center;
+  padding-left: 12px;
+  padding-right: 12px;
+  display: flex;
+}
+
 .formblock {
   margin-bottom: 0;
 }
@@ -1151,6 +1190,21 @@ strong {
   margin-top: 0;
 }
 
+.hero-social-divider {
+  background-color: rgba(255, 255, 255, 0.05);
+  width: 100%;
+  height: 1.5px;
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+
+.past-hero-meta-row {
+  grid-column-gap: 5px;
+  grid-row-gap: 5px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .herostat-block {
   display: flex;
 }
@@ -1226,6 +1280,18 @@ strong {
   grid-row-gap: 5px;
   flex-flow: column;
   display: flex;
+}
+
+.sidecard-info-divider {
+  background-color: var(--lite);
+  width: 100%;
+  height: 1.5px;
+  margin-top: 5px;
+  margin-bottom: 5px;
+}
+
+.sidecard-social-row {
+  margin-top: 10px;
 }
 
 .contenttable {
@@ -1421,6 +1487,64 @@ strong {
   transform: translateX(-50%);
 }
 
+.speevy-tooltip-panel-list {
+  text-align: left;
+  white-space: normal;
+  min-width: 160px;
+  max-width: 240px;
+}
+
+.speevy-tooltip-title {
+  opacity: .64;
+  margin-bottom: 5px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.speevy-tooltip-list-item + .speevy-tooltip-list-item {
+  margin-top: 4px;
+}
+
+.speevy-interest-opportunity-list {
+  grid-column-gap: 6px;
+  grid-row-gap: 6px;
+  flex-flow: column;
+  display: flex;
+}
+
+.speevy-interest-opportunity-row {
+  grid-column-gap: 10px;
+  grid-row-gap: 10px;
+  border: 1.5px solid var(--lite);
+  background-color: #fff;
+  border-radius: 10px;
+  align-items: center;
+  padding: 8px;
+  display: flex;
+}
+
+.speevy-interest-opportunity-logo {
+  border-radius: 7px;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+}
+
+.speevy-interest-opportunity-main {
+  min-width: 0;
+}
+
+.speevy-interest-opportunity-empty {
+  border: 1.5px solid var(--lite);
+  color: #1a1c2080;
+  background-color: #fff;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 14px;
+}
+
 .speevy-tooltip:hover .speevy-tooltip-panel,
 .speevy-tooltip:focus-within .speevy-tooltip-panel {
   opacity: 1;
@@ -1543,6 +1667,74 @@ strong {
   margin: 8px -24px -24px;
   padding: 18px 24px;
   display: flex;
+}
+
+.document-viewer-card {
+  cursor: pointer;
+  text-align: left;
+  border: 1.5px solid var(--border);
+  width: 100%;
+}
+
+.document-viewer-card:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.document-viewer-panel {
+  width: min(900px, 100%);
+}
+
+.document-viewer-body {
+  background-color: var(--lite);
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  position: relative;
+}
+
+.document-viewer-subtitle {
+  margin-top: 5px;
+  font-size: 1.04em;
+}
+
+.document-viewer-frame {
+  background-color: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.document-viewer-watermark {
+  z-index: 2;
+  opacity: .09;
+  pointer-events: none;
+  position: absolute;
+  inset: 12px;
+  overflow: hidden;
+}
+
+.document-viewer-watermark-grid {
+  color: var(--slate);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  grid-template-columns: repeat(3, max-content);
+  gap: 44px 58px;
+  min-width: 130%;
+  min-height: 130%;
+  margin-top: -10%;
+  margin-left: -15%;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1em;
+  display: grid;
+  transform: rotate(-18deg);
+}
+
+.document-viewer-watermark-grid span {
+  white-space: nowrap;
 }
 
 .speevy-form-message {
@@ -1765,7 +1957,7 @@ strong {
 .documenticon {
   aspect-ratio: 1;
   color: #e64346;
-  background-color: #f1dfdf;
+  background-color: var(--lite);
   border-radius: 8px;
   flex: none;
   justify-content: center;
@@ -3565,7 +3757,7 @@ strong {
 }
 
 .cardrow:hover {
-  border-color: var(--slate);
+  border-color: #b8c0c8;
 }
 
 .cardlogo-row {

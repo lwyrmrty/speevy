@@ -46,6 +46,9 @@ export type OpportunityEditorInitialData = {
     originationFeeCents: number | string | null;
     carryPercentageBasisPoints: number | null;
     managementFeeBasisPoints: number | null;
+    websiteUrl: string | null;
+    linkedinUrl: string | null;
+    twitterUrl: string | null;
     ndaRequired: boolean;
     watermarkEnabled: boolean;
     passwordProtected: boolean;
@@ -603,6 +606,8 @@ function UploadButton({
   label,
   name,
   initialStorageKey = '',
+  accept = 'image/*',
+  assetKind = 'section',
   onError,
   slug,
   onDirty,
@@ -610,22 +615,31 @@ function UploadButton({
   label: string;
   name: string;
   initialStorageKey?: string;
+  accept?: string;
+  assetKind?: 'section' | 'document';
   onError: (message: string) => void;
   slug: string;
   onDirty: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [previewSrc, setPreviewSrc] = useState('');
+  const [previewType, setPreviewType] = useState<'image' | 'document' | ''>('');
   const [storageKey, setStorageKey] = useState('');
   const [uploading, setUploading] = useState(false);
 
   const handleChange = async (file: File) => {
-    setPreviewSrc(URL.createObjectURL(file));
+    if (file.type.startsWith('image/')) {
+      setPreviewType('image');
+      setPreviewSrc(URL.createObjectURL(file));
+    } else {
+      setPreviewType('document');
+      setPreviewSrc('');
+    }
     setUploading(true);
 
     const formData = new FormData();
     formData.set('slug', slug);
-    formData.set('kind', 'section');
+    formData.set('kind', assetKind);
     formData.set('file', file);
 
     const result = await uploadOpportunityAsset(formData);
@@ -633,7 +647,9 @@ function UploadButton({
 
     if (result.status === 'success') {
       setStorageKey(result.storageKey);
-      setPreviewSrc(result.signedUrl);
+      if (file.type.startsWith('image/')) {
+        setPreviewSrc(result.signedUrl);
+      }
       onDirty();
       return;
     }
@@ -649,7 +665,9 @@ function UploadButton({
         aria-label={label}
         onClick={() => inputRef.current?.click()}
       >
-        {previewSrc ? (
+        {previewType === 'document' ? (
+          <img src="/webflow/images/docicon.svg" loading="lazy" alt="" className="docsicon" />
+        ) : previewSrc ? (
           <img alt="" src={previewSrc} loading="lazy" className="full-image" />
         ) : (
           <UploadIcon />
@@ -661,7 +679,7 @@ function UploadButton({
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={accept}
         hidden
         disabled={uploading}
         onChange={(event) => {
@@ -689,14 +707,19 @@ function LinksDrawer({
   onDirty: () => void;
   onUploadError: (message: string) => void;
 }) {
-  const [items, setItems] = useState<RepeaterItem[]>([{ id: 1 }]);
-  const [nextId, setNextId] = useState(2);
+  const linkTitles = stringValues(initialData?.['Link-Title']);
+  const linkUrls = stringValues(initialData?.['Link-Url']);
+  const linkImages = stringValues(initialData?.['Link-Image-Storage-Key']);
+  const initialItemCount = Math.max(linkTitles.length, linkUrls.length, linkImages.length, 1);
+  const initialItems = Array.from({ length: initialItemCount }, (_, index) => ({ id: index + 1 }));
+  const [items, setItems] = useState<RepeaterItem[]>(initialItems);
+  const [nextId, setNextId] = useState(initialItems.length + 1);
   const [draggedId, setDraggedId] = useState<number | null>(null);
 
   return (
     <div content-type="links" className="contenttype-block">
       <SectionIntroFields prefix="Links" initialData={initialData} onDirty={onDirty} />
-      {items.map((item) => (
+      {items.map((item, index) => (
         <div
           key={item.id}
           className="rowcard withdrag"
@@ -721,6 +744,7 @@ function LinksDrawer({
                 <UploadButton
                   label="Upload link thumbnail"
                   name="Link-Image-Storage-Key"
+                  initialStorageKey={linkImages[index] ?? ''}
                   slug={uploadSlug}
                   onDirty={onDirty}
                   onError={onUploadError}
@@ -732,6 +756,7 @@ function LinksDrawer({
                   data-name="Link Title"
                   placeholder="Title"
                   type="text"
+                  defaultValue={linkTitles[index] ?? ''}
                 />
               </div>
               <input
@@ -741,6 +766,7 @@ function LinksDrawer({
                 data-name="Link URL"
                 placeholder="Content link"
                 type="url"
+                defaultValue={linkUrls[index] ?? ''}
               />
             </div>
           </div>
@@ -780,14 +806,18 @@ function DocumentsDrawer({
   onDirty: () => void;
   onUploadError: (message: string) => void;
 }) {
-  const [items, setItems] = useState<RepeaterItem[]>([{ id: 1 }]);
-  const [nextId, setNextId] = useState(2);
+  const documentTitles = stringValues(initialData?.['Document-Title']);
+  const documentStorageKeys = stringValues(initialData?.['Document-Storage-Key']);
+  const initialItemCount = Math.max(documentTitles.length, documentStorageKeys.length, 1);
+  const initialItems = Array.from({ length: initialItemCount }, (_, index) => ({ id: index + 1 }));
+  const [items, setItems] = useState<RepeaterItem[]>(initialItems);
+  const [nextId, setNextId] = useState(initialItems.length + 1);
   const [draggedId, setDraggedId] = useState<number | null>(null);
 
   return (
     <div content-type="documents" className="contenttype-block">
       <SectionIntroFields prefix="Documents" initialData={initialData} onDirty={onDirty} />
-      {items.map((item) => (
+      {items.map((item, index) => (
         <div
           key={item.id}
           className="rowcard withdrag"
@@ -812,6 +842,9 @@ function DocumentsDrawer({
                 <UploadButton
                   label="Upload document"
                   name="Document-Storage-Key"
+                  accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  assetKind="document"
+                  initialStorageKey={documentStorageKeys[index] ?? ''}
                   slug={uploadSlug}
                   onDirty={onDirty}
                   onError={onUploadError}
@@ -823,6 +856,7 @@ function DocumentsDrawer({
                   data-name="Document Title"
                   placeholder="Document Title"
                   type="text"
+                  defaultValue={documentTitles[index] ?? ''}
                 />
               </div>
             </div>
@@ -1762,6 +1796,9 @@ export function OpportunityEditor({
   const [managementFee, setManagementFee] = useState(
     basisPointsToPercentInput(initialOpportunity?.managementFeeBasisPoints),
   );
+  const [websiteUrl, setWebsiteUrl] = useState(initialOpportunity?.websiteUrl ?? '');
+  const [linkedinUrl, setLinkedinUrl] = useState(initialOpportunity?.linkedinUrl ?? '');
+  const [twitterUrl, setTwitterUrl] = useState(initialOpportunity?.twitterUrl ?? '');
   const [ndaRequired, setNdaRequired] = useState(initialOpportunity?.ndaRequired ?? false);
   const [watermarkEnabled, setWatermarkEnabled] = useState(initialOpportunity?.watermarkEnabled ?? false);
   const [passwordProtected, setPasswordProtected] = useState(initialOpportunity?.passwordProtected ?? false);
@@ -1835,6 +1872,9 @@ export function OpportunityEditor({
       originationFee,
       carry,
       managementFee,
+      websiteUrl,
+      linkedinUrl,
+      twitterUrl,
       ndaRequired,
       watermarkEnabled,
       passwordProtected,
@@ -1951,7 +1991,10 @@ export function OpportunityEditor({
         <a href="#" aria-current="page" className="admin-navlink w-inline-block w--current">
           <div>Edit Opportunity</div>
         </a>
-        <a href="#" className="admin-navlink w-inline-block">
+        <a
+          href={isCreating ? '#' : `/admin/opportunities/${initialData.slug}/interest`}
+          className="admin-navlink w-inline-block"
+        >
           <div>Investor Interest</div>
         </a>
       </div>
@@ -2243,6 +2286,63 @@ export function OpportunityEditor({
                           inputMode="numeric"
                           value={originationFee}
                           onChange={(event) => setOriginationFee(formatCurrencyInput(event.currentTarget.value))}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="cardblock">
+                  <div>
+                    <div className="sideheading">Links and Socials</div>
+                  </div>
+                  <div className="contentheader">
+                    <div className="alignrow aligncenter">
+                      <div className="formfields-block">
+                        <div className="fieldlabel">Website</div>
+                        <input
+                          className="formfields w-input"
+                          maxLength={256}
+                          name="Website-Url"
+                          data-name="Website URL"
+                          placeholder="https://company.com"
+                          type="url"
+                          value={websiteUrl}
+                          onChange={(event) => setWebsiteUrl(event.currentTarget.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="contentheader">
+                    <div className="alignrow aligncenter">
+                      <div className="formfields-block">
+                        <div className="fieldlabel">LinkedIn</div>
+                        <input
+                          className="formfields w-input"
+                          maxLength={256}
+                          name="LinkedIn-Url"
+                          data-name="LinkedIn URL"
+                          placeholder="https://linkedin.com/company/name"
+                          type="url"
+                          value={linkedinUrl}
+                          onChange={(event) => setLinkedinUrl(event.currentTarget.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="contentheader">
+                    <div className="alignrow aligncenter">
+                      <div className="formfields-block">
+                        <div className="fieldlabel">Twitter / X</div>
+                        <input
+                          className="formfields w-input"
+                          maxLength={256}
+                          name="Twitter-Url"
+                          data-name="Twitter URL"
+                          placeholder="https://x.com/username"
+                          type="url"
+                          value={twitterUrl}
+                          onChange={(event) => setTwitterUrl(event.currentTarget.value)}
                         />
                       </div>
                     </div>

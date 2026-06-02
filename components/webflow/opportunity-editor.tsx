@@ -3,7 +3,9 @@
 import Underline from '@tiptap/extension-underline';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { useRouter } from 'next/navigation';
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -17,6 +19,8 @@ import {
   saveOpportunityDraft,
   uploadOpportunityAsset,
 } from '@/app/admin/opportunities/actions';
+import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
+import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
 
 type OpportunityStatus = 'draft' | 'potential' | 'active' | 'past';
 type SectionType = 'richContent' | 'links' | 'media' | 'documents' | 'team' | 'investors';
@@ -25,17 +29,21 @@ type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 type SectionCard = {
   id: number;
   type: SectionType;
+  data?: Record<string, unknown>;
 };
 
 export type OpportunityEditorInitialData = {
   slug: string;
+  createNew?: boolean;
   opportunity?: {
     status: OpportunityStatus;
     title: string;
     teaser: string | null;
+    sectors: string[] | null;
     stage: string | null;
     targetAllocationCents: number | string | null;
     minimumInvestmentCents: number | string | null;
+    originationFeeCents: number | string | null;
     carryPercentageBasisPoints: number | null;
     managementFeeBasisPoints: number | null;
     ndaRequired: boolean;
@@ -114,6 +122,14 @@ function reorderById<T extends { id: number }>(items: T[], draggedId: number, ta
   const [moved] = next.splice(from, 1);
   next.splice(to, 0, moved);
   return next;
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'opportunity';
 }
 
 function reorderValues<T>(items: T[], dragged: T, target: T) {
@@ -302,17 +318,23 @@ function SectionIcon() {
 function SectionCardEditor({
   section,
   onDelete,
+  onDirty,
+  onUploadError,
   onDragOver,
   onDragStart,
   onDrop,
   onTypeChange,
+  uploadSlug,
 }: {
   section: SectionCard;
   onDelete: () => void;
+  onDirty: () => void;
+  onUploadError: (message: string) => void;
   onDragOver: (event: DragEvent<HTMLDivElement>) => void;
   onDragStart: (event: DragEvent<HTMLDivElement>) => void;
   onDrop: (event: DragEvent<HTMLDivElement>) => void;
   onTypeChange: (type: SectionType) => void;
+  uploadSlug: string;
 }) {
   const [open, setOpen] = useState(false);
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
@@ -380,29 +402,183 @@ function SectionCardEditor({
         >
           <div>{section.type === 'media' || section.type === 'documents' ? 'Configure' : 'Settings'}</div>
         </button>
-        {open ? (
-          <div className="contentsettings-drawer">
-            {section.type === 'richContent' ? (
-              <RichTextDrawer />
-            ) : section.type === 'links' ? (
-              <LinksDrawer />
-            ) : section.type === 'documents' ? (
-              <DocumentsDrawer />
-            ) : section.type === 'team' ? (
-              <PeopleDrawer kind="team" />
-            ) : section.type === 'investors' ? (
-              <PeopleDrawer kind="investors" />
-            ) : (
-              <MediaDrawer />
-            )}
-          </div>
-        ) : null}
+        <div className="contentsettings-drawer" style={{ display: open ? 'block' : 'none' }}>
+          {section.type === 'richContent' ? (
+            <RichTextDrawer initialData={section.data} />
+          ) : section.type === 'links' ? (
+            <LinksDrawer
+              initialData={section.data}
+              uploadSlug={uploadSlug}
+              onDirty={onDirty}
+              onUploadError={onUploadError}
+            />
+          ) : section.type === 'documents' ? (
+            <DocumentsDrawer
+              initialData={section.data}
+              uploadSlug={uploadSlug}
+              onDirty={onDirty}
+              onUploadError={onUploadError}
+            />
+          ) : section.type === 'team' ? (
+            <PeopleDrawer
+              kind="team"
+              initialData={section.data}
+              uploadSlug={uploadSlug}
+              onDirty={onDirty}
+              onUploadError={onUploadError}
+            />
+          ) : section.type === 'investors' ? (
+            <PeopleDrawer
+              kind="investors"
+              initialData={section.data}
+              uploadSlug={uploadSlug}
+              onDirty={onDirty}
+              onUploadError={onUploadError}
+            />
+          ) : (
+            <MediaDrawer
+              initialData={section.data}
+              uploadSlug={uploadSlug}
+              onDirty={onDirty}
+              onUploadError={onUploadError}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function SectionIntroFields({ prefix }: { prefix: string }) {
+function storedRichTextValue(value: string) {
+  if (!value) return '';
+
+  try {
+    JSON.parse(value);
+    return value;
+  } catch {
+    return JSON.stringify({
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: value }],
+        },
+      ],
+    });
+  }
+}
+
+function stringValues(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string');
+  }
+
+  return typeof value === 'string' ? [value] : [];
+}
+
+function TiptapDescriptionField({
+  name,
+  initialValue,
+  onDirty,
+}: {
+  name: string;
+  initialValue: string;
+  onDirty: () => void;
+}) {
+  const normalizedInitialValue = storedRichTextValue(initialValue);
+  const [bodyJson, setBodyJson] = useState(normalizedInitialValue);
+  const editor = useEditor({
+    extensions: [StarterKit, Underline],
+    content: parseRichTextBody(normalizedInitialValue),
+    editorProps: {
+      attributes: {
+        class: 'textdoc-content-inner',
+      },
+    },
+    immediatelyRender: false,
+    onUpdate({ editor: currentEditor }) {
+      setBodyJson(JSON.stringify(currentEditor.getJSON()));
+      onDirty();
+    },
+  });
+
+  const toolbarButtons = [
+    {
+      label: 'Bold',
+      icon: 'https://cdn.prod.website-files.com/6904240f9360489fd59ec0b9/691bbe0879061e6f24c92972_bold.svg',
+      active: editor?.isActive('bold') ?? false,
+      onClick: () => editor?.chain().focus().toggleBold().run(),
+    },
+    {
+      label: 'Italic',
+      icon: 'https://cdn.prod.website-files.com/6904240f9360489fd59ec0b9/691bdcfcd81923bac81af3e4_italic.svg',
+      active: editor?.isActive('italic') ?? false,
+      onClick: () => editor?.chain().focus().toggleItalic().run(),
+    },
+    {
+      label: 'Underline',
+      icon: 'https://cdn.prod.website-files.com/6904240f9360489fd59ec0b9/691bdd0798736d065bc84222_underline.svg',
+      active: editor?.isActive('underline') ?? false,
+      onClick: () => editor?.chain().focus().toggleUnderline().run(),
+    },
+    'divider' as const,
+    {
+      label: 'Bullet List',
+      icon: 'https://cdn.prod.website-files.com/6904240f9360489fd59ec0b9/691bbe0809043a4c57c7ac50_list.svg',
+      active: editor?.isActive('bulletList') ?? false,
+      onClick: () => editor?.chain().focus().toggleBulletList().run(),
+    },
+    {
+      label: 'Numbered List',
+      icon: 'https://cdn.prod.website-files.com/6904240f9360489fd59ec0b9/691bddf670a5db883e5590a3_numberslist.svg',
+      active: editor?.isActive('orderedList') ?? false,
+      onClick: () => editor?.chain().focus().toggleOrderedList().run(),
+    },
+  ];
+
+  return (
+    <>
+      <input type="hidden" name={name} value={bodyJson} readOnly />
+      <div className="tiptap-wrapper description">
+        <div className="textstyles-row">
+          {toolbarButtons.map((button, index) =>
+            button === 'divider' ? (
+              <div key={`divider-${index}`} className="textstyle-divider" />
+            ) : (
+              <button
+                key={button.label}
+                type="button"
+                className={`textstyle-block w-inline-block${button.active ? ' active' : ''}`}
+                aria-label={button.label}
+                onClick={button.onClick}
+              >
+                <img src={button.icon} loading="lazy" alt="" className="textsyle-icon" />
+              </button>
+            ),
+          )}
+        </div>
+        <div className="textdoc-content description">
+          <EditorContent editor={editor} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+function SectionIntroFields({
+  prefix,
+  initialData,
+  onDirty,
+}: {
+  prefix: string;
+  initialData?: Record<string, unknown>;
+  onDirty: () => void;
+}) {
+  const titleValue = initialData?.[`${prefix}-Title`];
+  const descriptionValue = initialData?.[`${prefix}-Description`];
+  const title = typeof titleValue === 'string' ? titleValue : '';
+  const description = typeof descriptionValue === 'string' ? descriptionValue : '';
+
   return (
     <div className="contentheader">
       <input
@@ -412,34 +588,114 @@ function SectionIntroFields({ prefix }: { prefix: string }) {
         data-name={`${prefix} Title`}
         placeholder="Title (Optional)"
         type="text"
+        defaultValue={title}
       />
-      <textarea
+      <TiptapDescriptionField
         name={`${prefix}-Description`}
-        maxLength={5000}
-        data-name={`${prefix} Description`}
-        placeholder="Short Description (Optional)"
-        className="formfields _70 w-input"
+        initialValue={description}
+        onDirty={onDirty}
       />
     </div>
   );
 }
 
-function UploadButton({ label }: { label: string }) {
+function UploadButton({
+  label,
+  name,
+  initialStorageKey = '',
+  onError,
+  slug,
+  onDirty,
+}: {
+  label: string;
+  name: string;
+  initialStorageKey?: string;
+  onError: (message: string) => void;
+  slug: string;
+  onDirty: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [previewSrc, setPreviewSrc] = useState('');
+  const [storageKey, setStorageKey] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const handleChange = async (file: File) => {
+    setPreviewSrc(URL.createObjectURL(file));
+    setUploading(true);
+
+    const formData = new FormData();
+    formData.set('slug', slug);
+    formData.set('kind', 'section');
+    formData.set('file', file);
+
+    const result = await uploadOpportunityAsset(formData);
+    setUploading(false);
+
+    if (result.status === 'success') {
+      setStorageKey(result.storageKey);
+      setPreviewSrc(result.signedUrl);
+      onDirty();
+      return;
+    }
+
+    onError(result.message);
+  };
+
   return (
-    <button type="button" className="thumbnailpicker" aria-label={label}>
-      <UploadIcon />
-    </button>
+    <>
+      <button
+        type="button"
+        className="thumbnailpicker"
+        aria-label={label}
+        onClick={() => inputRef.current?.click()}
+      >
+        {previewSrc ? (
+          <img alt="" src={previewSrc} loading="lazy" className="full-image" />
+        ) : (
+          <UploadIcon />
+        )}
+      </button>
+      {storageKey || initialStorageKey ? (
+        <input name={name} type="hidden" value={storageKey || initialStorageKey} readOnly />
+      ) : null}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        disabled={uploading}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+
+          if (file) {
+            void handleChange(file);
+          }
+
+          event.currentTarget.value = '';
+        }}
+      />
+    </>
   );
 }
 
-function LinksDrawer() {
+function LinksDrawer({
+  initialData,
+  uploadSlug,
+  onDirty,
+  onUploadError,
+}: {
+  initialData?: Record<string, unknown>;
+  uploadSlug: string;
+  onDirty: () => void;
+  onUploadError: (message: string) => void;
+}) {
   const [items, setItems] = useState<RepeaterItem[]>([{ id: 1 }]);
   const [nextId, setNextId] = useState(2);
   const [draggedId, setDraggedId] = useState<number | null>(null);
 
   return (
     <div content-type="links" className="contenttype-block">
-      <SectionIntroFields prefix="Links" />
+      <SectionIntroFields prefix="Links" initialData={initialData} onDirty={onDirty} />
       {items.map((item) => (
         <div
           key={item.id}
@@ -462,7 +718,13 @@ function LinksDrawer() {
             <DragHandle />
             <div className="prompt-block">
               <div className="alignrow aligncenter">
-                <UploadButton label="Upload link thumbnail" />
+                <UploadButton
+                  label="Upload link thumbnail"
+                  name="Link-Image-Storage-Key"
+                  slug={uploadSlug}
+                  onDirty={onDirty}
+                  onError={onUploadError}
+                />
                 <input
                   className="formfields w-input"
                   maxLength={256}
@@ -507,14 +769,24 @@ function LinksDrawer() {
   );
 }
 
-function DocumentsDrawer() {
+function DocumentsDrawer({
+  initialData,
+  uploadSlug,
+  onDirty,
+  onUploadError,
+}: {
+  initialData?: Record<string, unknown>;
+  uploadSlug: string;
+  onDirty: () => void;
+  onUploadError: (message: string) => void;
+}) {
   const [items, setItems] = useState<RepeaterItem[]>([{ id: 1 }]);
   const [nextId, setNextId] = useState(2);
   const [draggedId, setDraggedId] = useState<number | null>(null);
 
   return (
     <div content-type="documents" className="contenttype-block">
-      <SectionIntroFields prefix="Documents" />
+      <SectionIntroFields prefix="Documents" initialData={initialData} onDirty={onDirty} />
       {items.map((item) => (
         <div
           key={item.id}
@@ -537,7 +809,13 @@ function DocumentsDrawer() {
             <DragHandle />
             <div className="prompt-block">
               <div className="alignrow aligncenter">
-                <UploadButton label="Upload document" />
+                <UploadButton
+                  label="Upload document"
+                  name="Document-Storage-Key"
+                  slug={uploadSlug}
+                  onDirty={onDirty}
+                  onError={onUploadError}
+                />
                 <input
                   className="formfields w-input"
                   maxLength={256}
@@ -574,17 +852,61 @@ function DocumentsDrawer() {
   );
 }
 
-function SocialRows({ prefix }: { prefix: string }) {
+function SocialIcon({ label }: { label: string }) {
+  if (label === 'LinkedIn') {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" className="socialicon">
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M9.42857 8.96884H13.1429V10.8193C13.6783 9.75524 15.0503 8.79887 17.1114 8.79887C21.0623 8.79887 22 10.9167 22 14.8028V22H18V15.6878C18 13.4748 17.4646 12.2266 16.1029 12.2266C14.2143 12.2266 13.4286 13.5722 13.4286 15.6878V22H9.42857V8.96884ZM2.57143 21.83H6.57143V8.79887H2.57143V21.83ZM7.14286 4.54958C7.14286 4.88439 7.07635 5.21593 6.94712 5.52526C6.81789 5.83458 6.62848 6.11565 6.3897 6.3524C6.15092 6.58915 5.86745 6.77695 5.55547 6.90508C5.24349 7.0332 4.90911 7.09915 4.57143 7.09915C4.23374 7.09915 3.89937 7.0332 3.58739 6.90508C3.27541 6.77695 2.99193 6.58915 2.75315 6.3524C2.51437 6.11565 2.32496 5.83458 2.19574 5.52526C2.06651 5.21593 2 4.88439 2 4.54958C2 3.87339 2.27092 3.22489 2.75315 2.74675C3.23539 2.26862 3.88944 2 4.57143 2C5.25341 2 5.90747 2.26862 6.3897 2.74675C6.87194 3.22489 7.14286 3.87339 7.14286 4.54958Z"
+          fill="currentColor"
+        />
+      </svg>
+    );
+  }
+
+  if (label === 'X / Twitter') {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" className="socialicon">
+        <path
+          d="M13.8076 10.4686L20.8808 2H19.2046L13.063 9.3532L8.15769 2H2.5L9.91779 13.1193L2.5 22H4.17621L10.6619 14.2348L15.8423 22H21.5L13.8072 10.4686H13.8076ZM11.5118 13.2173L10.7602 12.1101L4.78017 3.29968H7.35474L12.1807 10.4099L12.9323 11.5172L19.2054 20.7594H16.6309L11.5118 13.2177V13.2173Z"
+          fill="currentColor"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" className="socialicon">
+      <path d="M2 12H22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(90 12 12)" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SocialRows({
+  prefix,
+  initialData,
+}: {
+  prefix: string;
+  initialData?: Record<string, unknown>;
+}) {
   const [socials, setSocials] = useState([
-    { label: 'Website', className: 'socialicons socials dark' },
-    { label: 'LinkedIn', className: 'socialicons socials linkedin' },
-    { label: 'X / Twitter', className: 'socialicons socials x' },
+    { label: 'Website', className: 'socialicons socials dark', placeholder: 'company.com' },
+    { label: 'LinkedIn', className: 'socialicons socials linkedin', placeholder: 'linkedin.com/in/name' },
+    { label: 'X / Twitter', className: 'socialicons socials x', placeholder: 'x.com/username' },
   ]);
   const [draggedLabel, setDraggedLabel] = useState<string | null>(null);
 
   return (
     <div className="rowcards wrapped">
-      {socials.map((social) => (
+      {socials.map((social) => {
+        const urlFieldName = `${prefix}-${social.label}-Url`;
+        const defaultUrl = initialData?.[urlFieldName];
+
+        return (
         <div
           key={social.label}
           className="rowcard withdrag"
@@ -613,21 +935,23 @@ function SocialRows({ prefix }: { prefix: string }) {
           <div className="alignrow aligncenter stretch middle">
             <DragHandle />
             <div className={social.className}>
-              <SectionIcon />
+              <SocialIcon label={social.label} />
             </div>
             <div className="prompt-block">
               <input
                 className="formfields-3 w-input"
                 maxLength={256}
-                name={`${prefix}-${social.label}-Url`}
+                name={urlFieldName}
                 data-name={`${prefix} ${social.label} URL`}
-                placeholder="facebook.com/company"
+                placeholder={social.placeholder}
                 type="url"
+                defaultValue={typeof defaultUrl === 'string' ? defaultUrl : ''}
               />
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -635,12 +959,14 @@ function SocialRows({ prefix }: { prefix: string }) {
 function CalloutRows({
   item,
   label,
+  initialCallouts,
   nextCalloutId,
   setItems,
   setNextCalloutId,
 }: {
   item: PersonItem;
   label: string;
+  initialCallouts: string[];
   nextCalloutId: number;
   setItems: Dispatch<SetStateAction<PersonItem[]>>;
   setNextCalloutId: Dispatch<SetStateAction<number>>;
@@ -649,7 +975,7 @@ function CalloutRows({
 
   return (
     <div className="rowcards wrapped">
-      {item.calloutIds.map((calloutId) => (
+      {item.calloutIds.map((calloutId, index) => (
         <div
           key={calloutId}
           className="rowcard withdrag"
@@ -691,10 +1017,11 @@ function CalloutRows({
               <input
                 className="formfields-3 w-input"
                 maxLength={256}
-                name={`${label}-Callout`}
+                name={`${label}-${item.id}-Callout`}
                 data-name={`${label} Callout`}
                 placeholder="e.g. PHD, Stanford"
                 type="text"
+                defaultValue={initialCallouts[index] ?? ''}
               />
             </div>
           </div>
@@ -740,18 +1067,77 @@ function CalloutRows({
   );
 }
 
-function PeopleDrawer({ kind }: { kind: 'team' | 'investors' }) {
-  const [items, setItems] = useState<PersonItem[]>([{ id: 1, calloutIds: [1] }]);
-  const [nextId, setNextId] = useState(2);
-  const [nextCalloutId, setNextCalloutId] = useState(2);
-  const [draggedPersonId, setDraggedPersonId] = useState<number | null>(null);
+function PeopleDrawer({
+  kind,
+  initialData,
+  uploadSlug,
+  onDirty,
+  onUploadError,
+}: {
+  kind: 'team' | 'investors';
+  initialData?: Record<string, unknown>;
+  uploadSlug: string;
+  onDirty: () => void;
+  onUploadError: (message: string) => void;
+}) {
   const label = kind === 'team' ? 'Team Member' : 'Investor';
   const sectionLabel = kind === 'team' ? 'Team' : 'Investors';
+  const legacyNames = stringValues(initialData?.[`${label}-Name`]);
+  const legacyTitles = stringValues(initialData?.[`${label}-Title`]);
+  const legacyImages = stringValues(initialData?.[`${label}-Image-Storage-Key`]);
+  const legacyCallouts = stringValues(initialData?.[`${label}-Callout`]);
+  const savedIds = Object.keys(initialData ?? {})
+    .map((key) => key.match(new RegExp(`^${label}-(\\d+)-`))?.[1])
+    .filter((id): id is string => Boolean(id))
+    .map(Number);
+  const initialIds = Array.from(new Set(savedIds)).sort((a, b) => a - b);
+  const initialPersonCount = Math.max(initialIds.length, legacyNames.length, 1);
+  const initialItems = Array.from({ length: initialPersonCount }, (_, index) => {
+    const id = initialIds[index] ?? index + 1;
+    const directCallouts = stringValues(initialData?.[`${label}-${id}-Callout`]);
+    const fallbackCalloutCount = directCallouts.length || Math.max(1, Math.ceil(legacyCallouts.length / initialPersonCount));
+
+    return {
+      id,
+      calloutIds: Array.from({ length: fallbackCalloutCount }, (__, calloutIndex) => calloutIndex + 1),
+    };
+  });
+  const maxInitialPersonId = Math.max(...initialItems.map((item) => item.id));
+  const maxInitialCalloutId = Math.max(...initialItems.flatMap((item) => item.calloutIds));
+  const [items, setItems] = useState<PersonItem[]>(initialItems);
+  const [nextId, setNextId] = useState(maxInitialPersonId + 1);
+  const [nextCalloutId, setNextCalloutId] = useState(maxInitialCalloutId + 1);
+  const [draggedPersonId, setDraggedPersonId] = useState<number | null>(null);
+
+  const legacyCalloutsForIndex = (index: number) => {
+    if (initialPersonCount <= 1) {
+      return legacyCallouts;
+    }
+
+    const baseCount = Math.floor(legacyCallouts.length / initialPersonCount);
+    const remainder = legacyCallouts.length % initialPersonCount;
+    const start = index * baseCount + Math.min(index, remainder);
+    const count = baseCount + (index < remainder ? 1 : 0);
+    return legacyCallouts.slice(start, start + count);
+  };
 
   return (
     <div content-type={kind} className="contenttype-block">
-      <SectionIntroFields prefix={sectionLabel} />
-      {items.map((item) => (
+      <SectionIntroFields prefix={sectionLabel} initialData={initialData} onDirty={onDirty} />
+      {items.map((item, index) => {
+        const name = typeof initialData?.[`${label}-${item.id}-Name`] === 'string'
+          ? initialData[`${label}-${item.id}-Name`] as string
+          : legacyNames[index] ?? '';
+        const title = typeof initialData?.[`${label}-${item.id}-Title`] === 'string'
+          ? initialData[`${label}-${item.id}-Title`] as string
+          : legacyTitles[index] ?? '';
+        const imageStorageKey = typeof initialData?.[`${label}-${item.id}-Image-Storage-Key`] === 'string'
+          ? initialData[`${label}-${item.id}-Image-Storage-Key`] as string
+          : legacyImages[index] ?? '';
+        const initialCallouts = stringValues(initialData?.[`${label}-${item.id}-Callout`]);
+        const callouts = initialCallouts.length ? initialCallouts : legacyCalloutsForIndex(index);
+
+        return (
         <div
           key={item.id}
           className="rowcard withdrag"
@@ -773,28 +1159,38 @@ function PeopleDrawer({ kind }: { kind: 'team' | 'investors' }) {
             <DragHandle />
             <div className="prompt-block">
               <div className="alignrow aligncenter">
-                <UploadButton label={`Upload ${label.toLowerCase()} image`} />
+                <UploadButton
+                  label={`Upload ${label.toLowerCase()} image`}
+                  name={`${label}-${item.id}-Image-Storage-Key`}
+                  initialStorageKey={imageStorageKey}
+                  slug={uploadSlug}
+                  onDirty={onDirty}
+                  onError={onUploadError}
+                />
                 <input
                   className="formfields w-input"
                   maxLength={256}
-                  name={`${label}-Name`}
+                  name={`${label}-${item.id}-Name`}
                   data-name={`${label} Name`}
                   placeholder="Name"
                   type="text"
+                  defaultValue={name}
                 />
               </div>
               <input
                 className="formfields w-input"
                 maxLength={256}
-                name={`${label}-Title`}
+                name={`${label}-${item.id}-Title`}
                 data-name={`${label} Title`}
                 placeholder="Title"
                 type="text"
+                defaultValue={title}
               />
-              <SocialRows prefix={`${label}-${item.id}`} />
+              <SocialRows prefix={`${label}-${item.id}`} initialData={initialData} />
               <CalloutRows
                 item={item}
                 label={label}
+                initialCallouts={callouts}
                 nextCalloutId={nextCalloutId}
                 setItems={setItems}
                 setNextCalloutId={setNextCalloutId}
@@ -811,7 +1207,8 @@ function PeopleDrawer({ kind }: { kind: 'team' | 'investors' }) {
             </button>
           </div>
         </div>
-      ))}
+        );
+      })}
       <button
         type="button"
         className="contentsettings-toggle rounded"
@@ -827,16 +1224,32 @@ function PeopleDrawer({ kind }: { kind: 'team' | 'investors' }) {
   );
 }
 
-function MediaDrawer() {
+function MediaDrawer({
+  initialData,
+  uploadSlug,
+  onDirty,
+  onUploadError,
+}: {
+  initialData?: Record<string, unknown>;
+  uploadSlug: string;
+  onDirty: () => void;
+  onUploadError: (message: string) => void;
+}) {
   return (
     <div content-type="media" className="contenttype-block">
-      <SectionIntroFields prefix="Media" />
+      <SectionIntroFields prefix="Media" initialData={initialData} onDirty={onDirty} />
       <div className="rowcard withdrag">
         <div className="alignrow aligncenter stretch middle">
           <DragHandle />
           <div className="prompt-block">
             <div className="alignrow aligncenter">
-              <UploadButton label="Upload media" />
+              <UploadButton
+                label="Upload media"
+                name="Media-Storage-Key"
+                slug={uploadSlug}
+                onDirty={onDirty}
+                onError={onUploadError}
+              />
               <input
                 className="formfields w-input"
                 maxLength={256}
@@ -853,11 +1266,27 @@ function MediaDrawer() {
   );
 }
 
-function RichTextDrawer() {
-  const [bodyJson, setBodyJson] = useState('');
+function parseRichTextBody(bodyJson: string) {
+  if (!bodyJson) return '';
+
+  try {
+    return JSON.parse(bodyJson);
+  } catch {
+    return '';
+  }
+}
+
+function RichTextDrawer({ initialData }: { initialData?: Record<string, unknown> }) {
+  const title = typeof initialData?.['Rich-Text-Title'] === 'string'
+    ? initialData['Rich-Text-Title']
+    : '';
+  const initialBodyJson = typeof initialData?.['Rich-Text-Body'] === 'string'
+    ? initialData['Rich-Text-Body']
+    : '';
+  const [bodyJson, setBodyJson] = useState(initialBodyJson);
   const editor = useEditor({
     extensions: [StarterKit, Underline],
-    content: '',
+    content: parseRichTextBody(initialBodyJson),
     editorProps: {
       attributes: {
         class: 'textdoc-content-inner',
@@ -935,6 +1364,7 @@ function RichTextDrawer() {
           data-name="Rich Text Title"
           placeholder="Title"
           type="text"
+          defaultValue={title}
         />
         <input
           type="hidden"
@@ -1025,6 +1455,10 @@ function moneyToNumber(value: string) {
 function compactRaiseAmount(value: string) {
   const amount = moneyToNumber(value);
 
+  if (!amount) {
+    return null;
+  }
+
   if (amount >= 1_000_000) {
     const millions = amount / 1_000_000;
     const label = Number.isInteger(millions) ? millions.toString() : millions.toFixed(1);
@@ -1035,11 +1469,15 @@ function compactRaiseAmount(value: string) {
     return `$${Math.round(amount / 1_000)}k`;
   }
 
-  return value || '$0';
+  return value;
 }
 
 function compactMinAmount(value: string) {
   const amount = moneyToNumber(value);
+
+  if (!amount) {
+    return null;
+  }
 
   if (amount >= 1_000_000) {
     const millions = amount / 1_000_000;
@@ -1051,7 +1489,7 @@ function compactMinAmount(value: string) {
     return `$${Math.round(amount / 1_000)}k`;
   }
 
-  return value || '$0';
+  return value;
 }
 
 function percentLabel(value: string) {
@@ -1060,6 +1498,112 @@ function percentLabel(value: string) {
 
 function managementFeeLabel(value: string) {
   return value.trim() ? `${percentLabel(value)} Fee` : 'No Fee';
+}
+
+function normalizeOpportunitySectors(value: string[] | null | undefined) {
+  return Array.from(new Set(
+    (value ?? []).filter((sector): sector is InvestorSector =>
+      (INVESTOR_SECTORS as readonly string[]).includes(sector),
+    ),
+  ));
+}
+
+function SectorDropdownIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="64"
+      height="64"
+      viewBox="0 0 24 24"
+      fill="none"
+      className="dropdowntoggle"
+      style={{ transform: open ? 'rotate(90deg)' : undefined }}
+    >
+      <path
+        d="M10 8L14 12L10 16"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function OpportunitySectorDropdown({
+  selectedSectors,
+  onChange,
+}: {
+  selectedSectors: InvestorSector[];
+  onChange: (sectors: InvestorSector[]) => void;
+}) {
+  const sectorDropdownRef = useRef<HTMLDivElement>(null);
+  const [sectorsOpen, setSectorsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!sectorsOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      if (
+        event.target instanceof Node
+        && !sectorDropdownRef.current?.contains(event.target)
+      ) {
+        setSectorsOpen(false);
+      }
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [sectorsOpen]);
+
+  function toggleSector(sector: InvestorSector) {
+    onChange(
+      selectedSectors.includes(sector)
+        ? selectedSectors.filter((item) => item !== sector)
+        : [...selectedSectors, sector],
+    );
+  }
+
+  return (
+    <div ref={sectorDropdownRef} className="dropdownblocks full opportunity-sector-dropdown">
+      <button
+        type="button"
+        className="dropdownbuttons _100 signup-sector-dropdown-button w-inline-block"
+        aria-expanded={sectorsOpen}
+        onClick={() => setSectorsOpen((current) => !current)}
+      >
+        <div className="align-row">
+          <div>{selectedSectors.length} Selected</div>
+        </div>
+        <SectorDropdownIcon open={sectorsOpen} />
+      </button>
+      <div className={`dropdownmodal signup-dropdown${sectorsOpen ? ' open' : ''}`}>
+        <div className="widgetsmodal-block">
+          <div className="pillswrapper">
+            {INVESTOR_SECTORS.map((sector) => {
+              const selected = selectedSectors.includes(sector);
+
+              return (
+                <button
+                  key={sector}
+                  type="button"
+                  className={`selectpill w-inline-block${selected ? ' selected' : ''}`}
+                  onClick={() => toggleSector(sector)}
+                >
+                  <div className="alignrow aligncenter">
+                    <div className={`selectlink-icon${selected ? ' selected' : ''}`}>
+                      <WebflowSectorIcon sector={sector} />
+                    </div>
+                    <div>{sector}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function CheckboxRow({ label, checked, onChange }: CheckboxRowProps) {
@@ -1190,22 +1734,30 @@ export function OpportunityEditor({
 }: {
   initialData?: OpportunityEditorInitialData;
 }) {
+  const router = useRouter();
   const rootRef = useRef<HTMLDivElement>(null);
   const initialOpportunity = initialData.opportunity;
+  const isCreating = initialData.createNew ?? false;
   const [status, setStatus] = useState<OpportunityStatus>(initialOpportunity?.status ?? 'draft');
-  const [title, setTitle] = useState(initialOpportunity?.title ?? 'Frontier Security');
+  const [title, setTitle] = useState(initialOpportunity?.title ?? '');
   const [teaser, setTeaser] = useState(
-    initialOpportunity?.teaser ?? 'AI operating system for enterprise security operations',
+    initialOpportunity?.teaser ?? '',
   );
-  const [stage, setStage] = useState(initialOpportunity?.stage ?? 'Pre-Seed');
+  const [selectedSectors, setSelectedSectors] = useState<InvestorSector[]>(
+    normalizeOpportunitySectors(initialOpportunity?.sectors),
+  );
+  const [stage, setStage] = useState(initialOpportunity?.stage ?? '');
   const [targetRaise, setTargetRaise] = useState(
-    centsToCurrencyInput(initialOpportunity?.targetAllocationCents) || '$2,500,000',
+    centsToCurrencyInput(initialOpportunity?.targetAllocationCents),
   );
   const [minimumCheck, setMinimumCheck] = useState(
-    centsToCurrencyInput(initialOpportunity?.minimumInvestmentCents) || '$100,000',
+    centsToCurrencyInput(initialOpportunity?.minimumInvestmentCents),
+  );
+  const [originationFee, setOriginationFee] = useState(
+    centsToCurrencyInput(initialOpportunity?.originationFeeCents),
   );
   const [carry, setCarry] = useState(
-    basisPointsToPercentInput(initialOpportunity?.carryPercentageBasisPoints) || '15%',
+    basisPointsToPercentInput(initialOpportunity?.carryPercentageBasisPoints),
   );
   const [managementFee, setManagementFee] = useState(
     basisPointsToPercentInput(initialOpportunity?.managementFeeBasisPoints),
@@ -1222,12 +1774,14 @@ export function OpportunityEditor({
     initialData.sections?.map((section, index) => ({
       id: index + 1,
       type: (section.type in sectionTypeLabels ? section.type : 'richContent') as SectionType,
+      data: section.data,
     })) ?? [];
   const [sections, setSections] = useState<SectionCard[]>(initialSections);
   const [nextSectionId, setNextSectionId] = useState(initialSections.length + 1);
   const [draggedSectionId, setDraggedSectionId] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveMessage, setSaveMessage] = useState('');
+  const canSave = saveStatus === 'dirty' || saveStatus === 'error';
 
   const markDirty = () => {
     setSaveStatus('dirty');
@@ -1269,13 +1823,16 @@ export function OpportunityEditor({
     );
 
     const result = await saveOpportunityDraft({
-      slug: initialData.slug,
+      slug: isCreating ? slugify(title) : initialData.slug,
+      createNew: isCreating,
       status,
       title,
       teaser,
+      sectors: selectedSectors,
       stage,
       targetRaise,
       minimumCheck,
+      originationFee,
       carry,
       managementFee,
       ndaRequired,
@@ -1295,6 +1852,11 @@ export function OpportunityEditor({
     if (result.status === 'success') {
       setSaveStatus('saved');
       setSaveMessage('');
+
+      if (isCreating) {
+        router.replace(`/admin/opportunities/${result.slug}/edit`);
+      }
+
       return;
     }
 
@@ -1317,7 +1879,7 @@ export function OpportunityEditor({
     setSaveMessage(kind === 'thumbnail' ? 'Uploading thumbnail...' : 'Uploading logo...');
 
     const formData = new FormData();
-    formData.set('slug', initialData.slug);
+    formData.set('slug', isCreating ? slugify(title) : initialData.slug);
     formData.set('kind', kind);
     formData.set('file', file);
 
@@ -1344,11 +1906,12 @@ export function OpportunityEditor({
     () => ({
       targetRaise: compactRaiseAmount(targetRaise),
       minimumCheck: compactMinAmount(minimumCheck),
+      originationFee: compactMinAmount(originationFee),
       carry: `${percentLabel(carry)} Carry`,
       managementFee: managementFeeLabel(managementFee),
       stage: stage.trim() || 'Stage',
     }),
-    [carry, managementFee, minimumCheck, stage, targetRaise],
+    [carry, managementFee, minimumCheck, originationFee, stage, targetRaise],
   );
 
   return (
@@ -1377,10 +1940,10 @@ export function OpportunityEditor({
           </svg>
         </a>
         <div className="breadcrumbdivider">//</div>
-        <a href={`/opportunities/${initialData.slug}`} className="breadcrumbicon w-inline-block">
+        <a href={isCreating ? '#' : `/opportunities/${initialData.slug}`} className="breadcrumbicon w-inline-block">
           <img src={logoSrc} loading="lazy" alt="" className="fullimage" />
         </a>
-        <a href={`/opportunities/${initialData.slug}`} className="breadcrumblink">
+        <a href={isCreating ? '#' : `/opportunities/${initialData.slug}`} className="breadcrumblink">
           {title || 'Untitled Opportunity'}
         </a>
       </div>
@@ -1412,15 +1975,24 @@ export function OpportunityEditor({
                   <div className="herosubheading">{teaser || 'Short Description'}</div>
                   <div className="herostats-row">
                     <div className="alignrow">
-                      <div className="pillstat litebg">
-                        <div>{heroStats.targetRaise}</div>
-                      </div>
+                      {heroStats.targetRaise ? (
+                        <div className="pillstat litebg">
+                          <div>{heroStats.targetRaise}</div>
+                        </div>
+                      ) : null}
                       <div className="pillstat litebg">
                         <div>{heroStats.carry}</div>
                       </div>
                       <div className="pillstat litebg">
                         <div>{heroStats.managementFee}</div>
                       </div>
+                      {heroStats.originationFee ? (
+                        <div className="pillstat litebg">
+                          <div>
+                            <span className="dimish">Origination:</span> {heroStats.originationFee}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="statdivider" />
                     <div className="alignrow">
@@ -1429,11 +2001,13 @@ export function OpportunityEditor({
                           <span className="dimish">Stage:</span> {heroStats.stage}
                         </div>
                       </div>
-                      <div className="pillstat litebg">
-                        <div>
-                          <span className="dimish">Min:</span> {heroStats.minimumCheck}
+                      {heroStats.minimumCheck ? (
+                        <div className="pillstat litebg">
+                          <div>
+                            <span className="dimish">Min:</span> {heroStats.minimumCheck}
+                          </div>
                         </div>
-                      </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -1447,6 +2021,12 @@ export function OpportunityEditor({
                   <SectionCardEditor
                     key={section.id}
                     section={section}
+                    uploadSlug={isCreating ? slugify(title) : initialData.slug}
+                    onDirty={markDirty}
+                    onUploadError={(message) => {
+                      setSaveStatus('error');
+                      setSaveMessage(message);
+                    }}
                     onDelete={() => {
                       setSections((current) => current.filter((item) => item.id !== section.id));
                       markDirty();
@@ -1557,6 +2137,20 @@ export function OpportunityEditor({
                   <div className="contentheader">
                     <div className="alignrow aligncenter">
                       <div className="formfields-block">
+                        <div className="fieldlabel">Opportunity Sectors</div>
+                        <OpportunitySectorDropdown
+                          selectedSectors={selectedSectors}
+                          onChange={(sectors) => {
+                            setSelectedSectors(sectors);
+                            markDirty();
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="contentheader">
+                    <div className="alignrow aligncenter">
+                      <div className="formfields-block">
                         <div className="fieldlabel">Opportunity Stage</div>
                         <input
                           className="formfields w-input"
@@ -1635,6 +2229,24 @@ export function OpportunityEditor({
                       </div>
                     </div>
                   </div>
+                  <div className="contentheader">
+                    <div className="alignrow aligncenter">
+                      <div className="formfields-block">
+                        <div className="fieldlabel">Origination Fee</div>
+                        <input
+                          className="formfields w-input"
+                          maxLength={256}
+                          name="Origination-Fee"
+                          data-name="Origination Fee"
+                          placeholder="e.g. $250,000"
+                          type="text"
+                          inputMode="numeric"
+                          value={originationFee}
+                          onChange={(event) => setOriginationFee(formatCurrencyInput(event.currentTarget.value))}
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="cardblock">
@@ -1698,8 +2310,8 @@ export function OpportunityEditor({
           </div>
         </div>
       </div>
-      <div className="floating-savebar">
-        <div className="floating-savebar-status">
+      <div className="floating-savebar editor-savebar-card">
+        <div className="floating-savebar-status editor-savebar-status">
           {saveStatus === 'dirty'
             ? 'Unsaved changes'
             : saveStatus === 'saving'
@@ -1710,20 +2322,22 @@ export function OpportunityEditor({
                 ? saveMessage || 'Save failed'
                 : 'No changes yet'}
         </div>
-        <button
-          type="button"
-          className="button short w-inline-block"
-          disabled={saveStatus === 'saving'}
-          onClick={handleSave}
-        >
-          <div>Save Changes</div>
-        </button>
-        <a
-          href={`/opportunities/${initialData.slug}`}
-          className="button short preview-button w-inline-block"
-        >
-          <div>Preview</div>
-        </a>
+        <div className="editor-savebar-actions">
+          <button
+            type="button"
+            className="button short editor-savebar-button w-inline-block"
+            disabled={!canSave}
+            onClick={handleSave}
+          >
+            <div>Save Changes</div>
+          </button>
+          <a
+            href={isCreating ? '#' : `/opportunities/${initialData.slug}`}
+            className="button short preview-button editor-savebar-button editor-savebar-preview-button w-inline-block"
+          >
+            <div>Preview</div>
+          </a>
+        </div>
       </div>
     </div>
   );

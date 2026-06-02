@@ -163,6 +163,9 @@ export const lps = pgTable('lps', {
   approvedAt: timestamp('approved_at', { withTimezone: true }),
   approvedByProfileId: uuid('approved_by_profile_id').references(() => profiles.id),
 
+  sectorsInterested: jsonb('sectors_interested').$type<string[]>().notNull().default([]),
+  investmentRangeMinCents: bigint('investment_range_min_cents', { mode: 'number' }),
+  investmentRangeMaxCents: bigint('investment_range_max_cents', { mode: 'number' }),
   internalNotes: text('internal_notes'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -198,11 +201,13 @@ export const opportunities = pgTable('opportunities', {
   title: text('title').notNull(),
   companyName: text('company_name').notNull(),
   teaser: text('teaser'),
+  opportunitySectors: jsonb('opportunity_sectors').$type<string[]>().notNull().default([]),
 
   status: opportunityStatus('status').notNull().default('draft'),
 
   minimumInvestmentCents: bigint('minimum_investment_cents', { mode: 'bigint' }),
   targetAllocationCents: bigint('target_allocation_cents', { mode: 'bigint' }),
+  originationFeeCents: bigint('origination_fee_cents', { mode: 'bigint' }),
 
   stage: text('stage'),
   carryPercentageBasisPoints: integer('carry_percentage_basis_points'),

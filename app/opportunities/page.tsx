@@ -1,34 +1,664 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
+import { SectionMiniNav } from '@/components/webflow/section-mini-nav';
+import { WebflowStyles } from '@/components/webflow/webflow-styles';
+import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
+import { INVESTOR_SECTORS } from '@/lib/investor-request';
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const metadata: Metadata = {
   title: 'Opportunities | Speevy',
 };
 
-// TEMPORARY placeholder for approved LPs. Replaced by the Webflow
-// opportunity list + detail pages in a later phase.
+type OpportunityRow = {
+  id: string;
+  slug: string;
+  title: string;
+  teaser: string | null;
+  status: 'potential' | 'draft' | 'active' | 'past';
+  opportunity_sectors: unknown;
+  stage: string | null;
+  minimum_investment_cents: number | string | null;
+  target_allocation_cents: number | string | null;
+  origination_fee_cents: number | string | null;
+  carry_percentage_basis_points: number | null;
+  management_fee_basis_points: number | null;
+  logo_storage_key: string | null;
+  thumbnail_storage_key: string | null;
+};
+
+type OpportunityCardRow = OpportunityRow & {
+  logoUrl: string | null;
+  thumbnailUrl: string | null;
+};
+
+type InterestRow = {
+  amount_cents: number | string | null;
+  status: 'indicated' | 'committed' | 'withdrawn';
+  opportunities: {
+    slug: string;
+    title: string;
+    logo_storage_key: string | null;
+  }[] | null;
+};
+
+type InterestDisplayRow = InterestRow & {
+  logoUrl: string | null;
+};
+
+type LpSidebarRow = {
+  id: string;
+  status: string;
+  full_name: string | null;
+  sectors_interested: unknown;
+  investment_range_min_cents: number | string | null;
+  investment_range_max_cents: number | string | null;
+};
+
+function centsToNumber(value: number | string | null) {
+  if (value === null) return 0;
+  return typeof value === 'string' ? Number(value) : value;
+}
+
+function compactMoney(value: number | string | null) {
+  const amount = centsToNumber(value) / 100;
+
+  if (amount >= 1_000_000) {
+    const millions = amount / 1_000_000;
+    return `$${Number.isInteger(millions) ? millions : millions.toFixed(1)} Million`;
+  }
+
+  if (amount >= 1_000) {
+    return `$${Math.round(amount / 1_000)}k`;
+  }
+
+  return amount ? `$${amount.toLocaleString('en-US')}` : '$0';
+}
+
+function compactShortMoney(value: number | string | null) {
+  const amount = centsToNumber(value) / 100;
+
+  if (amount >= 1_000_000) {
+    const millions = amount / 1_000_000;
+    return `$${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`;
+  }
+
+  if (amount >= 1_000) {
+    return `$${Math.round(amount / 1_000)}k`;
+  }
+
+  return amount ? `$${amount.toLocaleString('en-US')}` : '-';
+}
+
+function compactRangeMoney(value: number | string | null) {
+  const amount = centsToNumber(value) / 100;
+
+  if (amount >= 1_000_000) {
+    const millions = amount / 1_000_000;
+    return `$${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`;
+  }
+
+  if (amount >= 1_000) {
+    return `$${Math.round(amount / 1_000)}K`;
+  }
+
+  return amount ? `$${amount.toLocaleString('en-US')}` : '';
+}
+
+function normalizeSectors(value: unknown) {
+  const sectors = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? [value]
+      : [];
+
+  return Array.from(new Set(
+    sectors.filter((sector): sector is string =>
+      typeof sector === 'string'
+      && sector.trim().length > 0
+      && (INVESTOR_SECTORS as readonly string[]).includes(sector),
+    ),
+  ));
+}
+
+function basisPointsToPercent(value: number | null) {
+  if (value === null) return '';
+  const percent = value / 100;
+  return `${Number.isInteger(percent) ? percent : percent.toFixed(2)}%`;
+}
+
+function StatusPill({ status }: { status: OpportunityRow['status'] }) {
+  if (status === 'active') {
+    return (
+      <div className="pillstat green">
+        <div>Active</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pillstat">
+      <div>{status.charAt(0).toUpperCase() + status.slice(1)}</div>
+    </div>
+  );
+}
+
+function OpportunityStats({ opportunity }: { opportunity: OpportunityCardRow }) {
+  const carry = basisPointsToPercent(opportunity.carry_percentage_basis_points);
+  const managementFee = basisPointsToPercent(opportunity.management_fee_basis_points);
+  const raiseLabel = centsToNumber(opportunity.target_allocation_cents)
+    ? compactMoney(opportunity.target_allocation_cents)
+    : null;
+  const minimumLabel = centsToNumber(opportunity.minimum_investment_cents)
+    ? compactMoney(opportunity.minimum_investment_cents)
+    : null;
+  const originationFeeLabel = centsToNumber(opportunity.origination_fee_cents)
+    ? compactMoney(opportunity.origination_fee_cents)
+    : null;
+
+  return (
+    <div className="div-block-2">
+      <div className="alignrow wrap">
+        {raiseLabel ? (
+          <div className="pillstat">
+            <div>{raiseLabel}</div>
+          </div>
+        ) : null}
+        <div className="pillstat">
+          <div>{carry ? `${carry} Carry` : '0% Carry'}</div>
+        </div>
+        <div className="pillstat">
+          <div>{managementFee ? `${managementFee} Fee` : 'No Fee'}</div>
+        </div>
+        {originationFeeLabel ? (
+          <div className="pillstat">
+            <div><span className="dimish">Origination:</span> {originationFeeLabel}</div>
+          </div>
+        ) : null}
+      </div>
+      <div className="alignrow wrap">
+        <div className="pillstat">
+          <div><span className="dimish">Stage:</span> {opportunity.stage ?? 'N/A'}</div>
+        </div>
+        {minimumLabel ? (
+          <div className="pillstat">
+            <div><span className="dimish">Min:</span> {minimumLabel}</div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function OpportunitySectorPills({
+  sectors,
+  alignRight = false,
+}: {
+  sectors: unknown;
+  alignRight?: boolean;
+}) {
+  const normalizedSectors = normalizeSectors(sectors);
+
+  if (normalizedSectors.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={`alignrow${alignRight ? ' alignright' : ''}`}>
+      {normalizedSectors.map((sector) => (
+        <div key={sector} className="pillstat _5">
+          <div className="pillicon-block">
+            <WebflowSectorIcon sector={sector} className="pillicon" />
+          </div>
+          <div>{sector}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({ label }: { label: string }) {
+  return (
+    <div className="cardlist-item">
+      <div className="cardrow">
+        <div className="cardtitle-row">
+          <div className="cardtitle">No {label.toLowerCase()} right now</div>
+          <div className="cardsubtitle">New opportunities will appear here once available.</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActiveOpportunityCard({ opportunity }: { opportunity: OpportunityCardRow }) {
+  return (
+    <div className="carditem">
+      <Link href={`/opportunities/${opportunity.slug}`} className="pagecard spacing w-inline-block">
+        <div className="cardthumbnail abs">
+          <img
+            src={opportunity.thumbnailUrl ?? '/webflow/images/cyberwallpaper.webp'}
+            loading="lazy"
+            alt=""
+            className="fullimage"
+          />
+          <div className="thumbnailoverlay">
+            <div className="abstl">
+              <StatusPill status={opportunity.status} />
+            </div>
+            <div className="abstr" />
+          </div>
+        </div>
+        <div className="cardcontent rounded">
+          <div className="alignrow _10">
+            <div className="cardlogo">
+              <img
+                src={opportunity.logoUrl ?? '/webflow/images/frontierSec.webp'}
+                loading="lazy"
+                alt=""
+                className="fullimage"
+              />
+            </div>
+            <div className="cardtitle-row">
+              <div className="cardtitle">{opportunity.title}</div>
+              <div className="cardsubtitle">{opportunity.teaser}</div>
+            </div>
+          </div>
+          <div className="spacer _0" />
+          <OpportunitySectorPills sectors={opportunity.opportunity_sectors} />
+          <div className="linedivider" />
+          <OpportunityStats opportunity={opportunity} />
+        </div>
+      </Link>
+    </div>
+  );
+}
+
+function CompactOpportunityRow({
+  opportunity,
+  disabled = false,
+}: {
+  opportunity: OpportunityCardRow;
+  disabled?: boolean;
+}) {
+  const href = disabled ? '#' : `/opportunities/${opportunity.slug}`;
+
+  return (
+    <div className="cardlist-item">
+      <Link href={href} className="cardrow w-inline-block">
+        <div className="cardlogo-row">
+          {disabled ? null : (
+            <div className="rowthumb">
+              <img
+                src={opportunity.thumbnailUrl ?? '/webflow/images/carl-wang-OCe8cTGymSQ-unsplash.jpg'}
+                loading="lazy"
+                alt=""
+                className="fullimage"
+              />
+              <div className="featuredoverlay" />
+            </div>
+          )}
+          <div className={`cardlogo-logo${disabled ? ' nopull' : ''}`}>
+            <img
+              src={opportunity.logoUrl ?? '/webflow/images/YJnP6Zn5_400x400.jpg'}
+              loading="lazy"
+              alt=""
+              className="fullimage"
+            />
+          </div>
+          <div className="cardtitle-row">
+            <div className="cardtitle">{opportunity.title}</div>
+            <div className="cardsubtitle">{opportunity.teaser}</div>
+          </div>
+        </div>
+        <div className="statsright">
+          <OpportunitySectorPills sectors={opportunity.opportunity_sectors} alignRight />
+          <div className="alignrow wrap alignright">
+            <div className="pillstat">
+              <div><span className="dimish">Stage:</span> {opportunity.stage ?? 'N/A'}</div>
+            </div>
+          </div>
+        </div>
+      </Link>
+    </div>
+  );
+}
+
+function InterestedOpportunities({
+  interests,
+}: {
+  interests: InterestDisplayRow[];
+}) {
+  if (interests.length === 0) {
+    return (
+      <div className="sidelinks-list">
+        <div className="sidelink borders">
+          <div className="sidesubheading">No interested opportunities yet.</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sidelinks-list">
+      {interests.map((interest) => {
+        const opportunity = interest.opportunities?.[0];
+        if (!opportunity) return null;
+
+        return (
+          <Link
+            key={opportunity.slug}
+            href={`/opportunities/${opportunity.slug}`}
+            className="sidelink borders w-inline-block"
+          >
+            <div className="alignrow aligncenter _10">
+              <div className="sidelink-icon med">
+                <img
+                  src={interest.logoUrl ?? '/webflow/images/frontierSec.webp'}
+                  loading="lazy"
+                  alt=""
+                  className="fullimage"
+                />
+              </div>
+              <div>{opportunity.title}</div>
+            </div>
+            <div className="dollaramount">{compactShortMoney(interest.amount_cents)}</div>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function InterestedSectors({ sectors }: { sectors: string[] }) {
+  if (sectors.length === 0) {
+    return (
+      <div className="sidelink borders">
+        <div className="sidesubheading">No sectors selected yet.</div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {sectors.map((sector) => (
+        <div key={sector} className="pillstat _5">
+          <div className="pillicon-block">
+            <WebflowSectorIcon sector={sector} className="pillicon" />
+          </div>
+          <div>{sector}</div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+function CapitalRange({
+  minCents,
+  maxCents,
+}: {
+  minCents: number | string | null;
+  maxCents: number | string | null;
+}) {
+  const minLabel = compactRangeMoney(minCents);
+  const maxLabel = compactRangeMoney(maxCents);
+
+  if (!minLabel || !maxLabel) {
+    return (
+      <div className="sidelink borders">
+        <div className="sidesubheading">No capital range selected yet.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pillstat">
+      <div>{minLabel} - {maxLabel}</div>
+    </div>
+  );
+}
+
 export default async function OpportunitiesHomePage() {
-  const supabase = await createSupabaseServerClient();
+  const serverSupabase = await createSupabaseServerClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await serverSupabase.auth.getUser();
 
   if (!user) {
     redirect('/login');
   }
 
+  const supabase = createSupabaseAdminClient();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, full_name, email')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const { data: lp } = await supabase
+    .from('lps')
+    .select('id, status, full_name, sectors_interested, investment_range_min_cents, investment_range_max_cents')
+    .eq('profile_id', user.id)
+    .maybeSingle<LpSidebarRow>();
+
+  const isAdmin = profile?.role === 'admin';
+  const isApprovedLp = lp?.status === 'approved';
+
+  if (!isAdmin && !isApprovedLp) {
+    redirect('/onboarding');
+  }
+
+  const opportunitiesClient = isAdmin ? supabase : serverSupabase;
+  const { data: opportunities } = await opportunitiesClient
+    .from('opportunities')
+    .select(`
+      id,
+      slug,
+      title,
+      teaser,
+      status,
+      opportunity_sectors,
+      stage,
+      minimum_investment_cents,
+      target_allocation_cents,
+      origination_fee_cents,
+      carry_percentage_basis_points,
+      management_fee_basis_points,
+      logo_storage_key,
+      thumbnail_storage_key
+    `)
+    .in('status', ['active', 'potential', 'past'])
+    .is('archived_at', null)
+    .order('created_at', { ascending: false });
+
+  const signedAssetUrl = async (storageKey: string | null) => {
+    if (!storageKey) return null;
+    const { data } = await supabase.storage
+      .from('opportunity-assets')
+      .createSignedUrl(storageKey, 60 * 60);
+    return data?.signedUrl ?? null;
+  };
+
+  const rows = (opportunities ?? []) as OpportunityRow[];
+  const cards = await Promise.all(
+    rows.map(async (opportunity) => ({
+      ...opportunity,
+      logoUrl: await signedAssetUrl(opportunity.logo_storage_key),
+      thumbnailUrl: await signedAssetUrl(opportunity.thumbnail_storage_key),
+    })),
+  );
+  const { data: interestsData } = lp?.id
+    ? await supabase
+      .from('interests')
+      .select(`
+        amount_cents,
+        status,
+        opportunities (
+          slug,
+          title,
+          logo_storage_key
+        )
+      `)
+      .eq('lp_id', lp.id)
+      .neq('status', 'withdrawn')
+      .order('indicated_at', { ascending: false })
+    : { data: [] };
+  const interestRows = (interestsData ?? []) as InterestRow[];
+  const interestDisplays = await Promise.all(
+    interestRows.map(async (interest) => ({
+      ...interest,
+      logoUrl: await signedAssetUrl(interest.opportunities?.[0]?.logo_storage_key ?? null),
+    })),
+  );
+  const displayName = profile?.full_name || lp?.full_name || profile?.email || user.email;
+  const firstName = (profile?.full_name || lp?.full_name)?.trim().split(/\s+/)[0] ?? 'there';
+  const interestedSectors = normalizeSectors(lp?.sectors_interested);
+  const activeOpportunities = cards.filter((opportunity) => opportunity.status === 'active');
+  const potentialOpportunities = cards.filter((opportunity) => opportunity.status === 'potential');
+  const pastOpportunities = cards.filter((opportunity) => opportunity.status === 'past');
+  const opportunityNavItems = [
+    { href: '#active', label: 'Active Opportunities' },
+    { href: '#potential', label: 'Potential Opportunities' },
+    { href: '#past', label: 'Past Opportunities' },
+  ];
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col justify-center gap-3 px-6">
-      <p className="text-sm font-semibold uppercase tracking-widest text-copper">
-        Speevy
-      </p>
-      <h1 className="text-3xl font-semibold text-ink">Welcome back</h1>
-      <p className="text-muted-foreground">
-        Signed in as {user.email}. Your opportunities will appear here — the
-        investor-facing list and detail pages are not built yet.
-      </p>
-    </main>
+    <>
+      <WebflowStyles />
+      <div className="pagewrapper">
+        <div className="pagenav">
+          <div className="pagecontainer navcontainer">
+            <div className="navalign">
+              <Link href="/opportunities" className="navlogo-link w-inline-block">
+                <img
+                  loading="lazy"
+                  src="/webflow/images/Harpoon-Logo.png"
+                  alt="Harpoon"
+                  sizes="(max-width: 931px) 100vw, 931px"
+                  srcSet="/webflow/images/Harpoon-Logo-p-500.png 500w, /webflow/images/Harpoon-Logo-p-800.png 800w, /webflow/images/Harpoon-Logo.png 931w"
+                  className="navlogo"
+                />
+              </Link>
+              <div className="navalign">
+                <Link href="/opportunities" className="navlink w-inline-block">
+                  <div>All Opportunities</div>
+                </Link>
+              </div>
+            </div>
+            <div className="navalign">
+              <div className="profileblock">
+                <a href="#" className="profilelink w-inline-block">
+                  <div className="profilesquare">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" className="usericon">
+                      <path fill="currentColor" d="m2.845 16.136 1 1.73c.531.917 1.809 1.261 2.73.73l.529-.306A8.1 8.1 0 0 0 9 19.402V20c0 1.103.897 2 2 2h2c1.103 0 2-.897 2-2v-.598a8.132 8.132 0 0 0 1.896-1.111l.529.306c.923.53 2.198.188 2.731-.731l.999-1.729a2.001 2.001 0 0 0-.731-2.732l-.505-.292a7.718 7.718 0 0 0 0-2.224l.505-.292a2.002 2.002 0 0 0 .731-2.732l-.999-1.729c-.531-.92-1.808-1.265-2.731-.732l-.529.306A8.1 8.1 0 0 0 15 4.598V4c0-1.103-.897-2-2-2h-2c-1.103 0-2 .897-2 2v.598a8.132 8.132 0 0 0-1.896 1.111l-.529-.306c-.924-.531-2.2-.187-2.731.732l-.999 1.729a2.001 2.001 0 0 0 .731 2.732l.505.292a7.683 7.683 0 0 0 0 2.223l-.505.292a2.003 2.003 0 0 0-.731 2.733zm3.326-2.758A5.703 5.703 0 0 1 6 12c0-.462.058-.926.17-1.378a.999.999 0 0 0-.47-1.108l-1.123-.65.998-1.729 1.145.662a.997.997 0 0 0 1.188-.142 6.071 6.071 0 0 1 2.384-1.399A1 1 0 0 0 11 5.3V4h2v1.3a1 1 0 0 0 .708.956 6.083 6.083 0 0 1 2.384 1.399.999.999 0 0 0 1.188.142l1.144-.661 1 1.729-1.124.649a1 1 0 0 0-.47 1.108c.112.452.17.916.17 1.378 0 .461-.058.925-.171 1.378a1 1 0 0 0 .471 1.108l1.123.649-.998 1.729-1.145-.661a.996.996 0 0 0-1.188.142 6.071 6.071 0 0 1-2.384 1.399A1 1 0 0 0 13 18.7l.002 1.3H11v-1.3a1 1 0 0 0-.708-.956 6.083 6.083 0 0 1-2.384-1.399.992.992 0 0 0-1.188-.141l-1.144.662-1-1.729 1.124-.651a1 1 0 0 0 .471-1.108z" />
+                      <path fill="currentColor" d="M12 16c2.206 0 4-1.794 4-4s-1.794-4-4-4-4 1.794-4 4 1.794 4 4 4zm0-6c1.084 0 2 .916 2 2s-.916 2-2 2-2-.916-2-2 .916-2 2-2z" />
+                    </svg>
+                  </div>
+                  <div className="text-block">{displayName}</div>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="pagecontainer">
+          <div className="pagecontent">
+            <div className="pagemain nogap">
+              <SectionMiniNav
+                items={opportunityNavItems}
+                className="innernav sidenav"
+                linkClassName="innerpage-links shrink w-inline-block"
+              />
+              <div id="active" className="contentblock">
+                <div className="tableheader">
+                  <div>
+                    <div className="pagetitle">Active Opportunities</div>
+                    <div className="pagesubtitle">Opportunities we are actively raising for right now</div>
+                  </div>
+                </div>
+                <div className="cardlist">
+                  {activeOpportunities.length > 0
+                    ? activeOpportunities.map((opportunity) => (
+                      <ActiveOpportunityCard key={opportunity.id} opportunity={opportunity} />
+                    ))
+                    : <EmptyState label="Active Opportunities" />}
+                </div>
+              </div>
+              <div id="potential" className="contentblock">
+                <div className="tableheader">
+                  <div>
+                    <div className="pagetitle">Potential Opportunities</div>
+                    <div className="pagesubtitle">Potential future oppportunities, but encourage you to share interest and estimated allocation</div>
+                  </div>
+                </div>
+                <div className="cardlist nomargin">
+                  {potentialOpportunities.length > 0
+                    ? potentialOpportunities.map((opportunity) => (
+                      <CompactOpportunityRow key={opportunity.id} opportunity={opportunity} />
+                    ))
+                    : <EmptyState label="Potential Opportunities" />}
+                </div>
+              </div>
+              <div id="past" className="contentblock">
+                <div className="tableheader">
+                  <div>
+                    <div className="pagetitle">Past Opportunities</div>
+                    <div className="pagesubtitle">Potential future oppportunities, but encourage you to share interest and estimated allocation</div>
+                  </div>
+                </div>
+                <div className="cardlist nomargin">
+                  {pastOpportunities.length > 0
+                    ? pastOpportunities.map((opportunity) => (
+                      <CompactOpportunityRow key={opportunity.id} opportunity={opportunity} disabled />
+                    ))
+                    : <EmptyState label="Past Opportunities" />}
+                </div>
+              </div>
+            </div>
+            <div className="pageside">
+              <div className="pagecard sidecard">
+                <div className="cardblock">
+                  <div className="cardtitle-row">
+                    <div className="sideheading large">Hi, {firstName}</div>
+                    <div className="sidesubheading">Welcome to your Harpoon Ventures opportunities dashboard. </div>
+                  </div>
+                </div>
+                <div className="cardblock">
+                  <div>
+                    <div className="sideheading">Opportunities Interested</div>
+                    <div className="sidesubheading">Opportunities you&#x27;ve shown interest in</div>
+                  </div>
+                  <div>
+                    <InterestedOpportunities interests={interestDisplays} />
+                  </div>
+                </div>
+                <div className="cardblock">
+                  <div>
+                    <div className="sideheading">Sectors Interested</div>
+                    <div className="sidesubheading">Sectors you said you are interested in</div>
+                  </div>
+                  <div className="alignrow wrap">
+                    <InterestedSectors sectors={interestedSectors} />
+                  </div>
+                </div>
+                <div className="cardblock">
+                  <div>
+                    <div className="sideheading">Capital Range</div>
+                    <div className="sidesubheading">The range you can potentially invest per deal</div>
+                  </div>
+                  <div className="alignrow wrap">
+                    <CapitalRange
+                      minCents={lp?.investment_range_min_cents ?? null}
+                      maxCents={lp?.investment_range_max_cents ?? null}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }

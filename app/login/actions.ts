@@ -119,7 +119,7 @@ export async function sendLoginCode(
   const { error } = await supabase.auth.signInWithOtp({
     email: parsed.data.email,
     options: {
-      shouldCreateUser: false,
+      shouldCreateUser: authorization.role === 'lp',
     },
   });
 
@@ -201,6 +201,27 @@ export async function verifyLoginCode(
   const userId = data.user?.id;
   if (!userId) {
     redirect(destinationFor(authorization));
+  }
+
+  if (authorization.role === 'lp') {
+    const adminSupabase = createSupabaseAdminClient();
+    const { data: lp } = await adminSupabase
+      .from('lps')
+      .update({
+        profile_id: userId,
+        invitation_accepted_at: new Date().toISOString(),
+      })
+      .ilike('email', parsed.data.email.toLowerCase())
+      .is('profile_id', null)
+      .select('full_name')
+      .maybeSingle();
+
+    if (lp?.full_name) {
+      await adminSupabase
+        .from('profiles')
+        .update({ full_name: lp.full_name })
+        .eq('id', userId);
+    }
   }
 
   // A profile promoted to admin out-of-band still routes to /admin even if the

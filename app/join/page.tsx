@@ -3,20 +3,12 @@ import type { Metadata } from 'next';
 import { InvestorRequestForm } from '@/components/auth/investor-request-form';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
 
-type JoinPageProps = {
-  params: Promise<{
-    token: string;
-  }>;
-};
-
 export const metadata: Metadata = {
   title: 'Request investor access | Speevy',
   description: 'Request Harpoon Ventures investor access through Speevy.',
 };
 
-export default async function JoinPage({ params }: JoinPageProps) {
-  const { token } = await params;
-
+export default function JoinPage() {
   return (
     <>
       <WebflowStyles />
@@ -37,7 +29,7 @@ export default async function JoinPage({ params }: JoinPageProps) {
                   />
                 </a>
                 <div className="formblock w-form">
-                  <InvestorRequestForm token={token} />
+                  <InvestorRequestForm token="public" />
                 </div>
               </div>
             </div>

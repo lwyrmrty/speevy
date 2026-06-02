@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 
+import { saveOpportunityInterest } from '@/app/opportunities/actions';
+
 function CheckIcon() {
   return (
     <svg
@@ -39,17 +41,20 @@ function moneyToCents(value: string) {
 export function OpportunityInterestCard({
   isGuest = false,
   minimumInvestmentCents,
+  opportunityId,
 }: {
   isGuest?: boolean;
   minimumInvestmentCents: number;
+  opportunityId: string;
 }) {
   const [interested, setInterested] = useState(false);
   const [amount, setAmount] = useState('');
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
+  const [saving, setSaving] = useState(false);
   const amountCents = moneyToCents(amount);
   const belowMinimum = interested && amount && amountCents < minimumInvestmentCents;
-  const canConfirm = amountCents >= minimumInvestmentCents;
+  const canConfirm = amountCents >= minimumInvestmentCents && !saving;
 
   useEffect(() => {
     if (!message) return;
@@ -122,11 +127,24 @@ export function OpportunityInterestCard({
           type="button"
           className="confirmbutton w-inline-block"
           disabled={!canConfirm}
-          onClick={() => {
-            setMessage('Interest saved for this session. Database persistence comes next.');
+          onClick={async () => {
+            setSaving(true);
+            setMessage('');
+
+            const result = await saveOpportunityInterest({
+              opportunityId,
+              amountCents,
+            });
+
+            setSaving(false);
+            setMessage(
+              result.status === 'success'
+                ? 'Interest saved.'
+                : result.message,
+            );
           }}
         >
-          <div>Confirm Interest</div>
+          <div>{saving ? 'Saving...' : 'Confirm Interest'}</div>
         </button>
       ) : null}
       {message ? (

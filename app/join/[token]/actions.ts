@@ -5,7 +5,7 @@ import { z } from 'zod';
 import {
   INVESTMENT_RANGE_MAX,
   INVESTMENT_RANGE_MIN,
-  INVESTMENT_RANGE_STEP,
+  INVESTMENT_RANGE_VALUES,
   INVESTOR_SECTORS,
   formatInvestmentRange,
 } from '@/lib/investor-request';
@@ -23,7 +23,7 @@ const investmentRangeValueSchema = z.coerce
   .min(INVESTMENT_RANGE_MIN)
   .max(INVESTMENT_RANGE_MAX)
   .refine(
-    (value) => (value - INVESTMENT_RANGE_MIN) % INVESTMENT_RANGE_STEP === 0,
+    (value) => (INVESTMENT_RANGE_VALUES as readonly number[]).includes(value),
     'Choose an investment range from the slider.',
   );
 
@@ -109,6 +109,9 @@ export async function submitInvestorRequest(
       entity_name: request.companyName,
       status: 'pending_review',
       accreditation_status: 'self_attested',
+      sectors_interested: request.sectors,
+      investment_range_min_cents: request.investmentRangeMin * 100,
+      investment_range_max_cents: request.investmentRangeMax * 100,
       internal_notes: JSON.stringify(requestNotes, null, 2),
     },
     {

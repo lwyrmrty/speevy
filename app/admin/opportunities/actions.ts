@@ -4,11 +4,12 @@ import { createHash } from 'node:crypto';
 
 import { z } from 'zod';
 
+import { INVESTOR_SECTORS } from '@/lib/investor-request';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const statusSchema = z.enum(['draft', 'potential', 'active', 'past']);
-const opportunityAssetKindSchema = z.enum(['thumbnail', 'logo']);
+const opportunityAssetKindSchema = z.enum(['thumbnail', 'logo', 'section']);
 const opportunityAssetsBucket = 'opportunity-assets';
 
 const sectionSchema = z.object({
@@ -20,12 +21,15 @@ const sectionSchema = z.object({
 
 const saveOpportunitySchema = z.object({
   slug: z.string().trim().min(1),
+  createNew: z.boolean().optional(),
   status: statusSchema,
   title: z.string().trim().min(1),
   teaser: z.string().trim().optional(),
+  sectors: z.array(z.enum(INVESTOR_SECTORS)).default([]),
   stage: z.string().trim().optional(),
   targetRaise: z.string().trim().optional(),
   minimumCheck: z.string().trim().optional(),
+  originationFee: z.string().trim().optional(),
   carry: z.string().trim().optional(),
   managementFee: z.string().trim().optional(),
   ndaRequired: z.boolean(),
@@ -40,7 +44,7 @@ const saveOpportunitySchema = z.object({
 export type SaveOpportunityPayload = z.infer<typeof saveOpportunitySchema>;
 
 export type SaveOpportunityResult =
-  | { status: 'success'; opportunityId: string; savedAt: string }
+  | { status: 'success'; opportunityId: string; slug: string; savedAt: string }
   | { status: 'error'; message: string };
 
 export type UploadOpportunityAssetResult =
@@ -90,6 +94,35 @@ function safeFileName(name: string) {
     .toLowerCase()
     .replace(/[^a-z0-9.]+/g, '-')
     .replace(/^-+|-+$/g, '');
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'opportunity';
+}
+
+async function uniqueOpportunitySlug(supabase: ReturnType<typeof createSupabaseAdminClient>, value: string) {
+  const baseSlug = slugify(value);
+  let candidate = baseSlug;
+  let suffix = 2;
+
+  while (true) {
+    const { data: existingOpportunity } = await supabase
+      .from('opportunities')
+      .select('id')
+      .eq('slug', candidate)
+      .maybeSingle();
+
+    if (!existingOpportunity) {
+      return candidate;
+    }
+
+    candidate = `${baseSlug}-${suffix}`;
+    suffix += 1;
+  }
 }
 
 async function ensureOpportunityAssetsBucket() {
@@ -191,13 +224,18 @@ export async function saveOpportunityDraft(
   const adminSupabase = createSupabaseAdminClient();
   const data = parsed.data;
   const password = data.password?.trim() ?? '';
+  const slug = data.createNew
+    ? await uniqueOpportunitySlug(adminSupabase, data.slug)
+    : data.slug;
 
   const savedAt = new Date().toISOString();
-  const { data: existingOpportunity } = await adminSupabase
-    .from('opportunities')
-    .select('id, password_hash')
-    .eq('slug', data.slug)
-    .maybeSingle();
+  const { data: existingOpportunity } = data.createNew
+    ? { data: null }
+    : await adminSupabase
+        .from('opportunities')
+        .select('id, password_hash')
+        .eq('slug', slug)
+        .maybeSingle();
 
   if (
     data.passwordProtected
@@ -211,13 +249,15 @@ export async function saveOpportunityDraft(
   }
 
   const opportunityFields = {
-    slug: data.slug,
+    slug,
     title: data.title,
     company_name: data.title,
     teaser: data.teaser || null,
+    opportunity_sectors: data.sectors,
     status: data.status,
     minimum_investment_cents: moneyToCents(data.minimumCheck),
     target_allocation_cents: moneyToCents(data.targetRaise),
+    origination_fee_cents: moneyToCents(data.originationFee),
     stage: data.stage || null,
     carry_percentage_basis_points: percentToBasisPoints(data.carry),
     management_fee_basis_points: percentToBasisPoints(data.managementFee),
@@ -284,5 +324,5 @@ export async function saveOpportunityDraft(
     }
   }
 
-  return { status: 'success', opportunityId: opportunity.id, savedAt };
+  return { status: 'success', opportunityId: opportunity.id, slug, savedAt };
 }

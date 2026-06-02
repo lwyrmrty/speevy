@@ -1,18 +1,156 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 
+import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+
 export const metadata: Metadata = {
   title: 'Manage Opportunities | Speevy',
 };
 
-const opportunities = [
-  { status: 'Active', statusClass: 'cellstatus', interest: '35%' },
-  { status: 'Potential', statusClass: 'cellstatus potential', interest: '35%' },
-  { status: 'Draft', statusClass: 'cellstatus draft', interest: '-' },
-  { status: 'Past', statusClass: 'cellstatus past', interest: '35%' },
-];
+type OpportunityStatus = 'active' | 'potential' | 'draft' | 'past';
 
-export default function AdminOpportunitiesPage() {
+type OpportunityRow = {
+  id: string;
+  slug: string;
+  title: string;
+  status: OpportunityStatus;
+  target_allocation_cents: number | string | null;
+  thumbnail_storage_key: string | null;
+  logo_storage_key: string | null;
+};
+
+type InterestRow = {
+  opportunity_id: string;
+  amount_cents: number | string | null;
+};
+
+type ViewRow = {
+  entity_id: string | null;
+};
+
+const statusLabels: Record<OpportunityStatus, string> = {
+  active: 'Active',
+  potential: 'Potential',
+  draft: 'Draft',
+  past: 'Past',
+};
+
+const statusClasses: Record<OpportunityStatus, string> = {
+  active: 'cellstatus',
+  potential: 'cellstatus potential',
+  draft: 'cellstatus draft',
+  past: 'cellstatus past',
+};
+
+function centsToNumber(value: number | string | null) {
+  if (value === null) {
+    return 0;
+  }
+
+  return Number(value);
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return count === 1 ? singular : plural;
+}
+
+export default async function AdminOpportunitiesPage() {
+  const supabase = createSupabaseAdminClient();
+  const { data: opportunitiesData } = await supabase
+    .from('opportunities')
+    .select(`
+      id,
+      slug,
+      title,
+      status,
+      target_allocation_cents,
+      thumbnail_storage_key,
+      logo_storage_key
+    `)
+    .is('archived_at', null)
+    .order('created_at', { ascending: false });
+
+  const opportunities = (opportunitiesData ?? []) as OpportunityRow[];
+  const opportunityIds = opportunities.map((opportunity) => opportunity.id);
+
+  const [{ data: interestsData }, { data: viewsData }] = opportunityIds.length
+    ? await Promise.all([
+        supabase
+          .from('interests')
+          .select('opportunity_id, amount_cents')
+          .in('opportunity_id', opportunityIds)
+          .neq('status', 'withdrawn'),
+        supabase
+          .from('audit_log')
+          .select('entity_id')
+          .eq('entity_type', 'opportunity')
+          .eq('action', 'opportunity.viewed')
+          .in('entity_id', opportunityIds),
+      ])
+    : [{ data: [] }, { data: [] }];
+
+  const interests = (interestsData ?? []) as InterestRow[];
+  const views = (viewsData ?? []) as ViewRow[];
+  const metricsByOpportunity = new Map<
+    string,
+    { interestedCount: number; interestAmountCents: number; viewedCount: number }
+  >();
+
+  opportunityIds.forEach((id) => {
+    metricsByOpportunity.set(id, {
+      interestedCount: 0,
+      interestAmountCents: 0,
+      viewedCount: 0,
+    });
+  });
+
+  interests.forEach((interest) => {
+    const metrics = metricsByOpportunity.get(interest.opportunity_id);
+
+    if (!metrics) {
+      return;
+    }
+
+    metrics.interestedCount += 1;
+    metrics.interestAmountCents += centsToNumber(interest.amount_cents);
+  });
+
+  views.forEach((view) => {
+    if (!view.entity_id) {
+      return;
+    }
+
+    const metrics = metricsByOpportunity.get(view.entity_id);
+
+    if (metrics) {
+      metrics.viewedCount += 1;
+    }
+  });
+
+  const signedAssetUrl = async (storageKey: string | null) => {
+    if (!storageKey) {
+      return null;
+    }
+
+    const { data } = await supabase.storage
+      .from('opportunity-assets')
+      .createSignedUrl(storageKey, 60 * 60);
+
+    return data?.signedUrl ?? null;
+  };
+
+  const rows = await Promise.all(
+    opportunities.map(async (opportunity) => ({
+      ...opportunity,
+      imageUrl: await signedAssetUrl(opportunity.logo_storage_key ?? opportunity.thumbnail_storage_key),
+      metrics: metricsByOpportunity.get(opportunity.id) ?? {
+        interestedCount: 0,
+        interestAmountCents: 0,
+        viewedCount: 0,
+      },
+    })),
+  );
+
   return (
     <div className="pagecontainer">
       <div className="pagecontent">
@@ -21,7 +159,7 @@ export default function AdminOpportunitiesPage() {
             <div className="tableheader">
               <div className="pagetitle">Manage Opportunities</div>
               <Link
-                href="/admin/opportunities/frontier-security/edit"
+                href="/admin/opportunities/new"
                 className="button short w-inline-block"
               >
                 <div>Create New</div>
@@ -48,64 +186,107 @@ export default function AdminOpportunitiesPage() {
                   <div>Actions</div>
                 </div>
               </div>
-              {opportunities.map((opportunity) => (
-                <div className="tablerow" key={opportunity.status}>
-                  <div className="tablecell first">
-                    <div className="interestchecks-row spacing">
-                      <div className="checkboxtoggle sm" />
-                    </div>
-                    <div className="rowicon-block">
-                      <img
-                        src="/webflow/images/photograph.svg"
-                        loading="lazy"
-                        alt=""
-                        className="fullimage"
-                      />
-                    </div>
-                    <div>
-                      <div className="cellname">Frontier Security</div>
-                      <div className={opportunity.statusClass}>{opportunity.status}</div>
-                    </div>
-                  </div>
-                  <div className="tablecell">
-                    {opportunity.interest === '-' ? (
-                      <div>-</div>
-                    ) : (
-                      <div className="interestrow">
-                        <div className="interestbar">
-                          <div className="interestprogress">
-                            <div className="percentinterest">{opportunity.interest}</div>
+              {rows.length ? (
+                rows.map((opportunity) => {
+                  const targetAllocationCents = centsToNumber(opportunity.target_allocation_cents);
+                  const interestPercent = targetAllocationCents
+                    ? Math.round((opportunity.metrics.interestAmountCents / targetAllocationCents) * 100)
+                    : null;
+                  const progressWidth = interestPercent === null
+                    ? 0
+                    : Math.min(Math.max(interestPercent, 0), 100);
+
+                  return (
+                    <div className="tablerow" key={opportunity.id}>
+                      <div className="tablecell first">
+                        <div className="interestchecks-row spacing">
+                          <div className="checkboxtoggle sm" />
+                        </div>
+                        <div className="rowicon-block">
+                          <img
+                            src={opportunity.imageUrl ?? '/webflow/images/photograph.svg'}
+                            loading="lazy"
+                            alt=""
+                            className="fullimage"
+                          />
+                        </div>
+                        <div>
+                          <div className="cellname">{opportunity.title}</div>
+                          <div className={statusClasses[opportunity.status]}>
+                            {statusLabels[opportunity.status]}
                           </div>
                         </div>
                       </div>
-                    )}
+                      <div className="tablecell">
+                        {interestPercent === null ? (
+                          <div>-</div>
+                        ) : (
+                          <div className="interestrow">
+                            <div className="interestbar">
+                              <div
+                                className="interestprogress"
+                                style={{ width: `${progressWidth}%` }}
+                              >
+                                <div className="percentinterest">{interestPercent}%</div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="tablecell">
+                        {opportunity.metrics.interestedCount ? (
+                          <div>
+                            {opportunity.metrics.interestedCount}{' '}
+                            <span className="dimish">
+                              {pluralize(opportunity.metrics.interestedCount, 'investor')}
+                            </span>
+                          </div>
+                        ) : (
+                          <div>-</div>
+                        )}
+                      </div>
+                      <div className="tablecell">
+                        {opportunity.metrics.viewedCount ? (
+                          <div>
+                            {opportunity.metrics.viewedCount}{' '}
+                            <span className="dimish">
+                              {pluralize(opportunity.metrics.viewedCount, 'time')}
+                            </span>
+                          </div>
+                        ) : (
+                          <div>-</div>
+                        )}
+                      </div>
+                      <div className="tablecell actions">
+                        <Link
+                          href={`/admin/opportunities/${opportunity.slug}/edit`}
+                          className="actionlinks w-inline-block"
+                        >
+                          <div>View / Edit</div>
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="tablerow">
+                  <div className="tablecell first">
+                    <div>No opportunities yet.</div>
                   </div>
                   <div className="tablecell">
-                    <div>
-                      {opportunity.interest === '-' ? '-' : '15 '}
-                      <span className="dimish">
-                        {opportunity.interest === '-' ? '' : 'investors'}
-                      </span>
-                    </div>
+                    <div>-</div>
                   </div>
                   <div className="tablecell">
-                    <div>
-                      {opportunity.interest === '-' ? '-' : '15 '}
-                      <span className="dimish">
-                        {opportunity.interest === '-' ? '' : 'times'}
-                      </span>
-                    </div>
+                    <div>-</div>
+                  </div>
+                  <div className="tablecell">
+                    <div>-</div>
                   </div>
                   <div className="tablecell actions">
-                    <Link
-                      href="/admin/opportunities/frontier-security/edit"
-                      className="actionlinks w-inline-block"
-                    >
-                      <div>View / Edit</div>
-                    </Link>
+                    <div>-</div>
                   </div>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>

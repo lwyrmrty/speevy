@@ -2,7 +2,10 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
 import { OpportunityInterestCard } from '@/components/webflow/opportunity-interest-card';
+import { SectionMiniNav } from '@/components/webflow/section-mini-nav';
+import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
+import { INVESTOR_SECTORS } from '@/lib/investor-request';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -65,6 +68,10 @@ function centsToNumber(value: number | string | null) {
 function compactRaiseAmount(value: number | string | null) {
   const amount = centsToNumber(value) / 100;
 
+  if (!amount) {
+    return null;
+  }
+
   if (amount >= 1_000_000) {
     const millions = amount / 1_000_000;
     return `$${Number.isInteger(millions) ? millions : millions.toFixed(1)} Million`;
@@ -74,11 +81,15 @@ function compactRaiseAmount(value: number | string | null) {
     return `$${Math.round(amount / 1_000)}k`;
   }
 
-  return amount ? `$${amount.toLocaleString('en-US')}` : '$0';
+  return `$${amount.toLocaleString('en-US')}`;
 }
 
 function compactMinAmount(value: number | string | null) {
   const amount = centsToNumber(value) / 100;
+
+  if (!amount) {
+    return null;
+  }
 
   if (amount >= 1_000_000) {
     const millions = amount / 1_000_000;
@@ -89,7 +100,7 @@ function compactMinAmount(value: number | string | null) {
     return `$${Math.round(amount / 1_000)}k`;
   }
 
-  return amount ? `$${amount.toLocaleString('en-US')}` : '$0';
+  return `$${amount.toLocaleString('en-US')}`;
 }
 
 function basisPointsToPercent(value: number | null) {
@@ -112,6 +123,57 @@ function asStringArray(value: unknown) {
   }
 
   return typeof value === 'string' && value.trim() ? [value] : [];
+}
+
+function firstStringAt(value: unknown, index: number) {
+  if (Array.isArray(value)) {
+    return typeof value[index] === 'string' ? value[index] : '';
+  }
+
+  return index === 0 && typeof value === 'string' ? value : '';
+}
+
+function normalizeSectors(value: unknown) {
+  const sectors = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? [value]
+      : [];
+
+  return Array.from(new Set(
+    sectors.filter((sector): sector is string =>
+      typeof sector === 'string'
+      && sector.trim().length > 0
+      && (INVESTOR_SECTORS as readonly string[]).includes(sector),
+    ),
+  ));
+}
+
+function OpportunitySectorPills({
+  sectors,
+  variant = 'default',
+}: {
+  sectors: unknown;
+  variant?: 'default' | 'lite';
+}) {
+  const normalizedSectors = normalizeSectors(sectors);
+
+  if (normalizedSectors.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="alignrow wrap">
+      {normalizedSectors.map((sector) => (
+        <div key={sector} className={`pillstat _5${variant === 'lite' ? ' litebg' : ''}`}>
+          <div className={`pillicon-block${variant === 'lite' ? ' lite' : ''}`}>
+            <WebflowSectorIcon sector={sector} className="pillicon" />
+          </div>
+          <div>{sector}</div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function slugify(value: string) {
@@ -138,7 +200,7 @@ function sectionAnchor(section: SectionRow) {
 function renderTiptapNode(node: TiptapNode, index = 0): React.ReactNode {
   if (node.type === 'text') {
     const text = node.text ?? '';
-    return node.marks?.reduce<React.ReactNode>((children, mark) => {
+    return (node.marks ?? []).reduce<React.ReactNode>((children, mark) => {
       if (mark.type === 'bold') return <strong key={`${index}-bold`}>{children}</strong>;
       if (mark.type === 'italic') return <em key={`${index}-italic`}>{children}</em>;
       if (mark.type === 'underline') return <u key={`${index}-underline`}>{children}</u>;
@@ -164,16 +226,30 @@ function renderTiptapNode(node: TiptapNode, index = 0): React.ReactNode {
   return <div key={index}>{children}</div>;
 }
 
+function parseTiptapValue(value: string) {
+  try {
+    return value ? JSON.parse(value) as TiptapNode : null;
+  } catch {
+    return null;
+  }
+}
+
+function RichTextValue({ value }: { value: string }) {
+  const parsed = parseTiptapValue(value);
+
+  return (
+    <div className="richcontent w-richtext">
+      {parsed?.content?.length
+        ? parsed.content.map((node, index) => renderTiptapNode(node, index))
+        : <p>{value}</p>}
+    </div>
+  );
+}
+
 function RichTextSection({ section }: { section: SectionRow }) {
   const title = sectionTitle(section);
   const body = firstString(section.data['Rich-Text-Body']);
-  let parsedBody: TiptapNode | null = null;
-
-  try {
-    parsedBody = body ? JSON.parse(body) as TiptapNode : null;
-  } catch {
-    parsedBody = null;
-  }
+  const parsedBody = parseTiptapValue(body);
 
   return (
     <div id={sectionAnchor(section)} className="contentsection">
@@ -196,11 +272,7 @@ function LinksSection({ section }: { section: SectionRow }) {
   return (
     <div id={sectionAnchor(section)} className="contentsection">
       <h1 className="contentheading">{title}</h1>
-      {description ? (
-        <div className="richcontent w-richtext">
-          <p>{description}</p>
-        </div>
-      ) : null}
+      {description ? <RichTextValue value={description} /> : null}
       <div className="articlelist">
         {linkTitles.map((linkTitle, index) => {
           const href = linkUrls[index] || '#';
@@ -229,11 +301,13 @@ function LinksSection({ section }: { section: SectionRow }) {
 
 function DocumentsSection({ section }: { section: SectionRow }) {
   const title = sectionTitle(section);
+  const description = firstString(section.data['Documents-Description']);
   const documents = asStringArray(section.data['Document-Title']);
 
   return (
     <div id={sectionAnchor(section)} className="contentsection">
       <h1 className="contentheading">{title}</h1>
+      {description ? <RichTextValue value={description} /> : null}
       <div className="teamlist">
         {documents.map((documentTitle, index) => (
           <div className="documentitem" key={`${documentTitle}-${index}`}>
@@ -263,38 +337,82 @@ function GenericSection({ section }: { section: SectionRow }) {
   return (
     <div id={sectionAnchor(section)} className="contentsection">
       <h1 className="contentheading">{title}</h1>
-      {description ? (
-        <div className="richcontent w-richtext">
-          <p>{description}</p>
-        </div>
-      ) : null}
+      {description ? <RichTextValue value={description} /> : null}
     </div>
   );
 }
 
-function TeamLikeSection({ section }: { section: SectionRow }) {
+function TeamLikeSection({
+  section,
+  assetUrls,
+}: {
+  section: SectionRow;
+  assetUrls: Record<string, string>;
+}) {
   const title = sectionTitle(section);
   const isInvestors = section.type === 'investors';
   const prefix = isInvestors ? 'Investor' : 'Team Member';
-  const names = asStringArray(section.data[`${prefix}-Name`]);
-  const titles = asStringArray(section.data[`${prefix}-Title`]);
-  const callouts = asStringArray(section.data[`${prefix}-Callout`]);
+  const sectionPrefix = isInvestors ? 'Investors' : 'Team';
+  const description = firstString(section.data[`${sectionPrefix}-Description`]);
+  const legacyNames = asStringArray(section.data[`${prefix}-Name`]);
+  const legacyCallouts = asStringArray(section.data[`${prefix}-Callout`]);
+  const savedIds = Object.keys(section.data)
+    .map((key) => key.match(new RegExp(`^${prefix}-(\\d+)-Name$`))?.[1])
+    .filter((id): id is string => Boolean(id))
+    .map(Number)
+    .sort((a, b) => a - b);
+  const peopleIds = savedIds.length
+    ? savedIds
+    : legacyNames.map((_, index) => index + 1);
+  const legacyCalloutsForIndex = (index: number) => {
+    if (peopleIds.length <= 1) {
+      return legacyCallouts;
+    }
+
+    const baseCount = Math.floor(legacyCallouts.length / peopleIds.length);
+    const remainder = legacyCallouts.length % peopleIds.length;
+    const start = index * baseCount + Math.min(index, remainder);
+    const count = baseCount + (index < remainder ? 1 : 0);
+    return legacyCallouts.slice(start, start + count);
+  };
 
   return (
     <div id={sectionAnchor(section)} className="contentsection">
       <h1 className="contentheading">{title}</h1>
+      {description ? <RichTextValue value={description} /> : null}
       <div className="teamlist">
-        {names.map((name, index) => (
+        {peopleIds.map((personId, index) => {
+          const name = firstString(section.data[`${prefix}-${personId}-Name`])
+            || firstStringAt(section.data[`${prefix}-Name`], index);
+          const personTitle = firstString(section.data[`${prefix}-${personId}-Title`])
+            || firstStringAt(section.data[`${prefix}-Title`], index);
+          const imageStorageKey = firstString(section.data[`${prefix}-${personId}-Image-Storage-Key`])
+            || firstStringAt(section.data[`${prefix}-Image-Storage-Key`], index);
+          const personCallouts = asStringArray(section.data[`${prefix}-${personId}-Callout`]);
+          const callouts = personCallouts.length ? personCallouts : legacyCalloutsForIndex(index);
+
+          return (
           <div className="teamitem" key={`${name}-${index}`}>
             <div className="pagecard full">
               <div className="teamhead-row">
                 <a href="#" className={`teamthumbnail${isInvestors ? ' med' : ''} w-inline-block`}>
-                  <img src={isInvestors ? '/webflow/images/harpoon_ventures_portfolio_logo.jpeg' : '/webflow/images/photograph.svg'} loading="lazy" alt="" className="fullimage" />
+                  <img
+                    src={imageStorageKey
+                      ? assetUrls[imageStorageKey] ?? (isInvestors
+                        ? '/webflow/images/harpoon_ventures_portfolio_logo.jpeg'
+                        : '/webflow/images/photograph.svg')
+                      : isInvestors
+                        ? '/webflow/images/harpoon_ventures_portfolio_logo.jpeg'
+                        : '/webflow/images/photograph.svg'}
+                    loading="lazy"
+                    alt=""
+                    className="fullimage"
+                  />
                 </a>
                 <div>
                   <div>
                     <div className="teamname">{name}</div>
-                    <div className="teamtitle">{titles[index] ?? ''}</div>
+                    <div className="teamtitle">{personTitle}</div>
                   </div>
                 </div>
               </div>
@@ -309,17 +427,26 @@ function TeamLikeSection({ section }: { section: SectionRow }) {
               ) : null}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function OpportunitySection({ section }: { section: SectionRow }) {
+function OpportunitySection({
+  section,
+  assetUrls,
+}: {
+  section: SectionRow;
+  assetUrls: Record<string, string>;
+}) {
   if (section.type === 'richContent') return <RichTextSection section={section} />;
   if (section.type === 'links') return <LinksSection section={section} />;
   if (section.type === 'documents') return <DocumentsSection section={section} />;
-  if (section.type === 'team' || section.type === 'investors') return <TeamLikeSection section={section} />;
+  if (section.type === 'team' || section.type === 'investors') {
+    return <TeamLikeSection section={section} assetUrls={assetUrls} />;
+  }
   return <GenericSection section={section} />;
 }
 
@@ -339,6 +466,22 @@ export default async function OpportunityPreviewPage({
 
   const { opportunityId } = await params;
   const supabase = createSupabaseAdminClient();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle();
+  const { data: lp } = await supabase
+    .from('lps')
+    .select('status')
+    .eq('profile_id', user.id)
+    .maybeSingle();
+  const isAdmin = profile?.role === 'admin';
+
+  if (!isAdmin && lp?.status !== 'approved') {
+    redirect('/onboarding');
+  }
+
   const { data: opportunity } = await supabase
     .from('opportunities')
     .select(
@@ -347,20 +490,34 @@ export default async function OpportunityPreviewPage({
         slug,
         title,
         teaser,
+        opportunity_sectors,
         stage,
         target_allocation_cents,
         minimum_investment_cents,
+        origination_fee_cents,
         carry_percentage_basis_points,
         management_fee_basis_points,
         thumbnail_storage_key,
-        logo_storage_key
+        logo_storage_key,
+        status
       `,
     )
     .eq('slug', opportunityId)
     .maybeSingle();
 
-  if (!opportunity) {
+  if (!opportunity || (!isAdmin && !['active', 'potential'].includes(opportunity.status))) {
     notFound();
+  }
+
+  if (!isAdmin) {
+    await supabase.from('audit_log').insert({
+      actor_profile_id: user.id,
+      actor_role: 'lp',
+      action: 'opportunity.viewed',
+      entity_type: 'opportunity',
+      entity_id: opportunity.id,
+      metadata: { slug: opportunity.slug },
+    });
   }
 
   const { data: sections } = await supabase
@@ -382,10 +539,31 @@ export default async function OpportunityPreviewPage({
     signedAssetUrl(opportunity.logo_storage_key),
   ]);
   const orderedSections = (sections ?? []) as SectionRow[];
+  const sectionAssetKeys = Array.from(new Set(
+    orderedSections.flatMap((section) =>
+      Object.entries(section.data).flatMap(([key, value]) =>
+        key.endsWith('Image-Storage-Key') ? asStringArray(value) : [],
+      ),
+    ),
+  ));
+  const sectionAssetUrlEntries = await Promise.all(
+    sectionAssetKeys.map(async (storageKey) => [
+      storageKey,
+      await signedAssetUrl(storageKey),
+    ] as const),
+  );
+  const sectionAssetUrls = Object.fromEntries(
+    sectionAssetUrlEntries.filter((entry): entry is readonly [string, string] => Boolean(entry[1])),
+  );
   const carry = basisPointsToPercent(opportunity.carry_percentage_basis_points);
   const managementFee = basisPointsToPercent(opportunity.management_fee_basis_points);
   const raiseLabel = compactRaiseAmount(opportunity.target_allocation_cents);
   const minimumLabel = compactMinAmount(opportunity.minimum_investment_cents);
+  const originationFeeLabel = compactMinAmount(opportunity.origination_fee_cents);
+  const sectionNavItems = orderedSections.map((section) => ({
+    href: `#${sectionAnchor(section)}`,
+    label: sectionTitle(section),
+  }));
 
   return (
     <>
@@ -434,13 +612,7 @@ export default async function OpportunityPreviewPage({
                   {opportunity.title}
                 </Link>
               </div>
-              <div className="innernav">
-                {orderedSections.map((section) => (
-                  <a key={`${section.type}-${section.position}`} href={`#${sectionAnchor(section)}`} className="innerpage-links w-inline-block">
-                    <div>{sectionTitle(section)}</div>
-                  </a>
-                ))}
-              </div>
+              {sectionNavItems.length > 1 ? <SectionMiniNav items={sectionNavItems} /> : null}
               <div className="herocard">
                 <img
                   src={thumbnailUrl ?? defaultThumbnail}
@@ -457,25 +629,37 @@ export default async function OpportunityPreviewPage({
                     <div className="herocontent">
                       <div className="heroheading">{opportunity.title}</div>
                       <div className="herosubheading">{opportunity.teaser}</div>
-                      <div className="herostats-row">
-                        <div className="alignrow">
-                          <div className="pillstat litebg">
-                            <div>{raiseLabel}</div>
+                      <div className="hero-pill-stack">
+                        <OpportunitySectorPills sectors={opportunity.opportunity_sectors} variant="lite" />
+                        <div className="herostats-row">
+                          <div className="alignrow">
+                            {raiseLabel ? (
+                              <div className="pillstat litebg">
+                                <div>{raiseLabel}</div>
+                              </div>
+                            ) : null}
+                            <div className="pillstat litebg">
+                              <div>{carry ? `${carry} Carry` : '0% Carry'}</div>
+                            </div>
+                            <div className="pillstat litebg">
+                              <div>{managementFee ? `${managementFee} Fee` : 'No Fee'}</div>
+                            </div>
+                            {originationFeeLabel ? (
+                              <div className="pillstat litebg">
+                                <div><span className="dimish">Origination:</span> {originationFeeLabel}</div>
+                              </div>
+                            ) : null}
                           </div>
-                          <div className="pillstat litebg">
-                            <div>{carry ? `${carry} Carry` : '0% Carry'}</div>
-                          </div>
-                          <div className="pillstat litebg">
-                            <div>{managementFee ? `${managementFee} Fee` : 'No Fee'}</div>
-                          </div>
-                        </div>
-                        <div className="statdivider" />
-                        <div className="alignrow">
-                          <div className="pillstat litebg">
-                            <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
-                          </div>
-                          <div className="pillstat litebg">
-                            <div><span className="dimish">Min:</span> {minimumLabel}</div>
+                          <div className="statdivider" />
+                          <div className="alignrow">
+                            <div className="pillstat litebg">
+                              <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
+                            </div>
+                            {minimumLabel ? (
+                              <div className="pillstat litebg">
+                                <div><span className="dimish">Min:</span> {minimumLabel}</div>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -487,6 +671,7 @@ export default async function OpportunityPreviewPage({
                 <OpportunitySection
                   key={`${section.type}-${section.position}`}
                   section={section}
+                  assetUrls={sectionAssetUrls}
                 />
               ))}
             </div>
@@ -503,28 +688,38 @@ export default async function OpportunityPreviewPage({
                     </div>
                   </div>
                   <div className="div-block-2">
+                    <OpportunitySectorPills sectors={opportunity.opportunity_sectors} />
                     <div className="alignrow wrap">
-                      <div className="pillstat">
-                        <div>{raiseLabel}</div>
-                      </div>
+                      {raiseLabel ? (
+                        <div className="pillstat">
+                          <div>{raiseLabel}</div>
+                        </div>
+                      ) : null}
                       <div className="pillstat">
                         <div>{carry ? `${carry} Carry` : '0% Carry'}</div>
                       </div>
                       <div className="pillstat">
                         <div>{managementFee ? `${managementFee} Fee` : 'No Fee'}</div>
                       </div>
+                      {originationFeeLabel ? (
+                        <div className="pillstat">
+                          <div><span className="dimish">Origination:</span> {originationFeeLabel}</div>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="alignrow wrap">
                       <div className="pillstat">
                         <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
                       </div>
-                      <div className="pillstat">
-                        <div><span className="dimish">Min:</span> {minimumLabel}</div>
-                      </div>
+                      {minimumLabel ? (
+                        <div className="pillstat">
+                          <div><span className="dimish">Min:</span> {minimumLabel}</div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
-                <div className="cardblock">
+                <div className="cardblock reserve-interest-cardblock">
                   <div>
                     <div className="sideheading">Reserve Interest</div>
                     <div className="sidesubheading">Update the opportunity with your interest and estimated check</div>
@@ -532,6 +727,7 @@ export default async function OpportunityPreviewPage({
                   <div className="formblock w-form">
                     <OpportunityInterestCard
                       minimumInvestmentCents={centsToNumber(opportunity.minimum_investment_cents)}
+                      opportunityId={opportunity.id}
                     />
                   </div>
                 </div>

@@ -19,11 +19,18 @@ const updateInvestorSchema = z.object({
   investmentRangeMax: z.coerce.number().int().nonnegative().nullable(),
 });
 
+const bulkApproveInvestorsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1),
+});
+
 export type UpdateInvestorResult =
   | { status: 'success'; message: string }
   | { status: 'error'; message: string };
 
-async function ensureAdmin() {
+async function ensureAdmin(): Promise<
+  | { ok: true; message: string; userId: string }
+  | { ok: false; message: string }
+> {
   const serverSupabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -44,7 +51,7 @@ async function ensureAdmin() {
     return { ok: false, message: 'Only admins can edit investors.' };
   }
 
-  return { ok: true, message: '' };
+  return { ok: true, message: '', userId: user.id };
 }
 
 export async function updateInvestor(formData: FormData): Promise<UpdateInvestorResult> {
@@ -91,4 +98,57 @@ export async function updateInvestor(formData: FormData): Promise<UpdateInvestor
 
   revalidatePath('/admin/investors');
   return { status: 'success', message: 'Investor updated.' };
+}
+
+export async function bulkApproveInvestors(ids: string[]): Promise<UpdateInvestorResult> {
+  const auth = await ensureAdmin();
+  if (!auth.ok) {
+    return { status: 'error', message: auth.message };
+  }
+
+  const parsed = bulkApproveInvestorsSchema.safeParse({ ids });
+  if (!parsed.success) {
+    return { status: 'error', message: 'Select at least one valid investor to approve.' };
+  }
+
+  const uniqueIds = Array.from(new Set(parsed.data.ids));
+  const supabase = createSupabaseAdminClient();
+  const { data: investors, error: fetchError } = await supabase
+    .from('lps')
+    .select('id, status')
+    .in('id', uniqueIds);
+
+  if (fetchError) {
+    return { status: 'error', message: fetchError.message };
+  }
+
+  if ((investors ?? []).length !== uniqueIds.length) {
+    return { status: 'error', message: 'One or more selected investors could not be found.' };
+  }
+
+  const canApproveAll = (investors ?? []).every((investor) => investor.status === 'pending_review');
+  if (!canApproveAll) {
+    return { status: 'error', message: 'Only investors pending review can be bulk approved.' };
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from('lps')
+    .update({
+      status: 'approved',
+      approved_at: now,
+      approved_by_profile_id: auth.userId,
+      updated_at: now,
+    })
+    .in('id', uniqueIds);
+
+  if (error) {
+    return { status: 'error', message: error.message };
+  }
+
+  revalidatePath('/admin/investors');
+  return {
+    status: 'success',
+    message: `${uniqueIds.length} ${uniqueIds.length === 1 ? 'investor' : 'investors'} approved.`,
+  };
 }

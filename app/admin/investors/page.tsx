@@ -4,6 +4,8 @@ import {
   AdminInvestorsTable,
   type AdminInvestorRow,
 } from '@/components/webflow/admin-investors-table';
+import { AdminInvestorsFallbackScript } from '@/components/webflow/admin-investors-fallback-script';
+import { CopyInvestorInviteLinkButton } from '@/components/webflow/copy-investor-invite-link-button';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
@@ -22,6 +24,7 @@ type InvestorRow = {
   sectors_interested: unknown;
   investment_range_min_cents: number | null;
   investment_range_max_cents: number | null;
+  created_at: string;
 };
 
 type InterestRow = {
@@ -56,7 +59,8 @@ export default async function AdminInvestorsPage() {
       status,
       sectors_interested,
       investment_range_min_cents,
-      investment_range_max_cents
+      investment_range_max_cents,
+      created_at
     `)
     .neq('status', 'removed')
     .order('updated_at', { ascending: false });
@@ -88,6 +92,7 @@ export default async function AdminInvestorsPage() {
     sectors: normalizeSectors(investor.sectors_interested),
     investmentRangeMin: investor.investment_range_min_cents,
     investmentRangeMax: investor.investment_range_max_cents,
+    joinedAt: investor.created_at,
     interestedCount: interestTotals.get(investor.id) ?? 0,
   }));
 
@@ -98,11 +103,10 @@ export default async function AdminInvestorsPage() {
           <div>
             <div className="tableheader">
               <div className="pagetitle">Manage Investors</div>
-              <a href="#" className="button short w-inline-block">
-                <div>Create New</div>
-              </a>
+              <CopyInvestorInviteLinkButton />
             </div>
             <AdminInvestorsTable investors={rows} />
+            <AdminInvestorsFallbackScript />
           </div>
         </div>
       </div>

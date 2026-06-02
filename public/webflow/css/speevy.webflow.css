@@ -1330,6 +1330,14 @@ strong {
   background-color: #0b756b0a;
 }
 
+.tablecell.speevy-sort-cell[aria-pressed="true"] {
+  color: var(--green);
+}
+
+.tablecell.speevy-sort-cell[aria-pressed="true"] .speevy-sort-indicator {
+  opacity: 1;
+}
+
 .speevy-table-sort-button {
   grid-column-gap: 6px;
   grid-row-gap: 6px;

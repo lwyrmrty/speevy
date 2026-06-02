@@ -138,7 +138,7 @@ const fallbackScript = `
         const difference = leftValue - rightValue;
         const direction = sortState.direction === 'desc' ? -1 : 1;
         if (difference !== 0) return difference * direction;
-        return (left.dataset.investorName || '').localeCompare(right.dataset.investorName || '');
+        return Number(left.dataset.originalIndex || 0) - Number(right.dataset.originalIndex || 0);
       });
 
       sortedRows.forEach((row) => table.appendChild(row));

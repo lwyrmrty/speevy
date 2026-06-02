@@ -389,7 +389,7 @@ export function AdminInvestorsTable({ investors }: { investors: AdminInvestorRow
         return valueDifference * direction;
       }
 
-      return (left.fullName || left.email).localeCompare(right.fullName || right.email);
+      return 0;
     });
   }, [sort, investors]);
 

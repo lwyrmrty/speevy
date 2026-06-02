@@ -1,5 +1,10 @@
 import type { Metadata } from 'next';
 
+import {
+  AdminInvestorsTable,
+  type AdminInvestorRow,
+} from '@/components/webflow/admin-investors-table';
+import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export const metadata: Metadata = {
@@ -7,7 +12,6 @@ export const metadata: Metadata = {
 };
 
 type LpStatus = 'invited' | 'onboarding' | 'pending_review' | 'approved' | 'rejected' | 'removed';
-type VerificationStatus = 'not_started' | 'pending' | 'approved' | 'rejected' | 'expired';
 
 type InvestorRow = {
   id: string;
@@ -15,60 +19,29 @@ type InvestorRow = {
   full_name: string | null;
   entity_name: string | null;
   status: LpStatus;
-  kyc_status: VerificationStatus;
-  accreditation_status: VerificationStatus;
-  created_at: string;
-  updated_at: string;
+  sectors_interested: unknown;
+  investment_range_min_cents: number | null;
+  investment_range_max_cents: number | null;
 };
 
 type InterestRow = {
   lp_id: string;
-  amount_cents: number | string | null;
 };
 
-const statusLabels: Record<LpStatus, string> = {
-  invited: 'Invited',
-  onboarding: 'Onboarding',
-  pending_review: 'Pending Review',
-  approved: 'Approved',
-  rejected: 'Rejected',
-  removed: 'Removed',
-};
+function normalizeSectors(value: unknown) {
+  const sectors = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? [value]
+      : [];
 
-const verificationLabels: Record<VerificationStatus, string> = {
-  not_started: 'Not Started',
-  pending: 'Pending',
-  approved: 'Approved',
-  rejected: 'Rejected',
-  expired: 'Expired',
-};
-
-function centsToNumber(value: number | string | null) {
-  if (value === null) return 0;
-  return Number(value);
-}
-
-function formatCurrency(cents: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(cents / 100);
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(value));
-}
-
-function statusClass(status: LpStatus) {
-  if (status === 'approved') return 'cellstatus';
-  if (status === 'pending_review' || status === 'onboarding') return 'cellstatus potential';
-  if (status === 'invited') return 'cellstatus draft';
-  return 'cellstatus past';
+  return Array.from(new Set(
+    sectors.filter((sector): sector is string =>
+      typeof sector === 'string'
+      && sector.trim().length > 0
+      && (INVESTOR_SECTORS as readonly string[]).includes(sector),
+    ),
+  )) as InvestorSector[];
 }
 
 export default async function AdminInvestorsPage() {
@@ -81,10 +54,9 @@ export default async function AdminInvestorsPage() {
       full_name,
       entity_name,
       status,
-      kyc_status,
-      accreditation_status,
-      created_at,
-      updated_at
+      sectors_interested,
+      investment_range_min_cents,
+      investment_range_max_cents
     `)
     .neq('status', 'removed')
     .order('updated_at', { ascending: false });
@@ -94,20 +66,30 @@ export default async function AdminInvestorsPage() {
   const { data: interestsData } = investorIds.length
     ? await supabase
       .from('interests')
-      .select('lp_id, amount_cents')
+      .select('lp_id')
       .in('lp_id', investorIds)
       .neq('status', 'withdrawn')
     : { data: [] };
 
-  const interestTotals = new Map<string, { count: number; amountCents: number }>();
-  investorIds.forEach((id) => interestTotals.set(id, { count: 0, amountCents: 0 }));
+  const interestTotals = new Map<string, number>();
+  investorIds.forEach((id) => interestTotals.set(id, 0));
   ((interestsData ?? []) as InterestRow[]).forEach((interest) => {
     const total = interestTotals.get(interest.lp_id);
-    if (!total) return;
+    if (total === undefined) return;
 
-    total.count += 1;
-    total.amountCents += centsToNumber(interest.amount_cents);
+    interestTotals.set(interest.lp_id, total + 1);
   });
+  const rows: AdminInvestorRow[] = investors.map((investor) => ({
+    id: investor.id,
+    email: investor.email,
+    fullName: investor.full_name,
+    entityName: investor.entity_name,
+    status: investor.status,
+    sectors: normalizeSectors(investor.sectors_interested),
+    investmentRangeMin: investor.investment_range_min_cents,
+    investmentRangeMax: investor.investment_range_max_cents,
+    interestedCount: interestTotals.get(investor.id) ?? 0,
+  }));
 
   return (
     <div className="pagecontainer">
@@ -116,77 +98,11 @@ export default async function AdminInvestorsPage() {
           <div>
             <div className="tableheader">
               <div className="pagetitle">Manage Investors</div>
+              <a href="#" className="button short w-inline-block">
+                <div>Create New</div>
+              </a>
             </div>
-            <div className="contenttable">
-              <div className="tablerow headerrow">
-                <div className="tablecell first">
-                  <div className="interestchecks-row spacing">
-                    <div className="checkboxtoggle sm" />
-                  </div>
-                  <div>Investor</div>
-                </div>
-                <div className="tablecell">
-                  <div>Entity</div>
-                </div>
-                <div className="tablecell">
-                  <div>Status</div>
-                </div>
-                <div className="tablecell">
-                  <div>Interest</div>
-                </div>
-                <div className="tablecell actions">
-                  <div>Updated</div>
-                </div>
-              </div>
-              {investors.length ? (
-                investors.map((investor) => {
-                  const interest = interestTotals.get(investor.id) ?? { count: 0, amountCents: 0 };
-
-                  return (
-                    <div className="tablerow" key={investor.id}>
-                      <div className="tablecell first">
-                        <div className="interestchecks-row spacing">
-                          <div className="checkboxtoggle sm" />
-                        </div>
-                        <div>
-                          <div className="cellname">{investor.full_name || investor.email}</div>
-                          <div className="dimsmall">{investor.email}</div>
-                        </div>
-                      </div>
-                      <div className="tablecell">
-                        <div>{investor.entity_name || 'Individual'}</div>
-                      </div>
-                      <div className="tablecell">
-                        <div className={statusClass(investor.status)}>{statusLabels[investor.status]}</div>
-                        <div className="dimsmall">
-                          KYC {verificationLabels[investor.kyc_status]} · Accreditation{' '}
-                          {verificationLabels[investor.accreditation_status]}
-                        </div>
-                      </div>
-                      <div className="tablecell">
-                        <div>{formatCurrency(interest.amountCents)}</div>
-                        <div className="dimsmall">
-                          {interest.count} {interest.count === 1 ? 'opportunity' : 'opportunities'}
-                        </div>
-                      </div>
-                      <div className="tablecell actions">
-                        <div>{formatDate(investor.updated_at || investor.created_at)}</div>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <div className="tablerow">
-                  <div className="tablecell first">
-                    <div>No investors yet.</div>
-                  </div>
-                  <div className="tablecell" />
-                  <div className="tablecell" />
-                  <div className="tablecell" />
-                  <div className="tablecell actions" />
-                </div>
-              )}
-            </div>
+            <AdminInvestorsTable investors={rows} />
           </div>
         </div>
       </div>

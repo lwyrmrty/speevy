@@ -9,6 +9,12 @@ import {
   INVESTOR_SECTORS,
   formatInvestmentRange,
 } from '@/lib/investor-request';
+import {
+  hasLoopsAdminLpAccessRequestEnv,
+  hasLoopsLpSignupReceivedEnv,
+  sendAdminLpAccessRequestEmail,
+  sendLpSignupReceivedEmail,
+} from '@/lib/loops/transactional';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { hasSupabaseServiceRoleEnv } from '@/lib/supabase/env';
 
@@ -50,6 +56,14 @@ const investorRequestSchema = z.object({
   },
 );
 
+function logEmailFailures(label: string, results: PromiseSettledResult<unknown>[]) {
+  results.forEach((result) => {
+    if (result.status === 'rejected') {
+      console.error(`${label} failed:`, result.reason instanceof Error ? result.reason.message : result.reason);
+    }
+  });
+}
+
 export async function submitInvestorRequest(
   _previousState: InvestorRequestActionState,
   formData: FormData,
@@ -79,18 +93,20 @@ export async function submitInvestorRequest(
   const request = parsed.data;
   const fullName = `${request.firstName} ${request.lastName}`;
   const normalizedEmail = request.email.toLowerCase();
+  const submittedAt = new Date().toISOString();
+  const investmentRange = `${formatInvestmentRange(
+    request.investmentRangeMin,
+  )} - ${formatInvestmentRange(request.investmentRangeMax)}`;
   const requestNotes = {
     source: 'investor_request_link',
     requestToken: request.token,
     firstName: request.firstName,
     lastName: request.lastName,
     sectorsInterested: request.sectors,
-    perOpportunityInvestmentRange: `${formatInvestmentRange(
-      request.investmentRangeMin,
-    )} - ${formatInvestmentRange(request.investmentRangeMax)}`,
+    perOpportunityInvestmentRange: investmentRange,
     accreditedInvestorConfirmed: true,
     priorHarpoonInvestorConfirmed: true,
-    submittedAt: new Date().toISOString(),
+    submittedAt,
   };
 
   if (!hasSupabaseServiceRoleEnv()) {
@@ -125,6 +141,47 @@ export async function submitInvestorRequest(
       message:
         'We could not submit this request yet. Please try again or contact investors@harpoon.vc.',
     };
+  }
+
+  if (hasLoopsAdminLpAccessRequestEnv()) {
+    const { data: admins } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('role', 'admin');
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
+
+    const results = await Promise.allSettled(
+      (admins ?? []).map((admin) =>
+        sendAdminLpAccessRequestEmail({
+          adminInvestorsUrl: `${appUrl}/admin/investors`,
+          companyName: request.companyName,
+          email: admin.email,
+          investmentRange,
+          investorEmail: normalizedEmail,
+          investorName: fullName,
+          sectors: request.sectors.join(', '),
+          submittedAt,
+          idempotencyKey: `lp-access-request-${normalizedEmail}-${admin.email}-${submittedAt}`,
+        }),
+      ),
+    );
+    logEmailFailures('Admin LP access request email', results);
+  }
+
+  if (hasLoopsLpSignupReceivedEnv()) {
+    const results = await Promise.allSettled([
+      sendLpSignupReceivedEmail({
+        companyName: request.companyName,
+        email: normalizedEmail,
+        firstName: request.firstName,
+        investmentRange,
+        investorName: fullName,
+        sectors: request.sectors.join(', '),
+        submittedAt,
+        idempotencyKey: `lp-signup-received-${normalizedEmail}-${submittedAt}`,
+      }),
+    ]);
+    logEmailFailures('LP signup received email', results);
   }
 
   return {

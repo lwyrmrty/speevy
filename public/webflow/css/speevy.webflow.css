@@ -1405,6 +1405,7 @@ strong {
   background-color: transparent;
   border: 0;
   font-family: inherit;
+  text-decoration: none;
 }
 
 .tablecell.speevy-sort-cell:hover {
@@ -1416,7 +1417,15 @@ strong {
   color: var(--green);
 }
 
+.tablecell.speevy-sort-cell[aria-current="true"] {
+  color: var(--green);
+}
+
 .tablecell.speevy-sort-cell[aria-pressed="true"] .speevy-sort-indicator {
+  opacity: 1;
+}
+
+.tablecell.speevy-sort-cell[aria-current="true"] .speevy-sort-indicator {
   opacity: 1;
 }
 
@@ -1448,6 +1457,27 @@ strong {
   width: 300px;
   padding: 10px;
   display: flex;
+}
+
+.speevy-interest-investor-cell {
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  display: flex;
+}
+
+.speevy-interest-investor-cell .dimsmall {
+  font-size: .98em;
+}
+
+.speevy-interest-profile-link {
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+
+.tablerow:hover .speevy-interest-profile-link,
+.speevy-interest-profile-link:focus-visible {
+  opacity: 1;
 }
 
 .tablecell.center {
@@ -1554,6 +1584,7 @@ strong {
   flex: none;
   width: 34px;
   height: 34px;
+  position: relative;
   overflow: hidden;
 }
 

@@ -18,7 +18,8 @@ export type AdminInvestorRow = {
   email: string;
   fullName: string | null;
   entityName: string | null;
-  status: 'invited' | 'onboarding' | 'pending_review' | 'approved' | 'rejected' | 'removed';
+  status: 'invited' | 'onboarding' | 'pending_review' | 'approved' | 'rejected' | 'removed' | 'outsider';
+  kind: 'insider' | 'outsider';
   sectors: InvestorSector[];
   investmentRangeMin: number | null;
   investmentRangeMax: number | null;
@@ -39,7 +40,20 @@ const statusLabels: Record<AdminInvestorRow['status'], string> = {
   approved: 'Approved',
   rejected: 'Rejected',
   removed: 'Removed',
+  outsider: 'Outsider',
 };
+
+function kindLabel(kind: AdminInvestorRow['kind']) {
+  return kind === 'outsider' ? 'Outsider' : 'Insider';
+}
+
+function kindClass(kind: AdminInvestorRow['kind']) {
+  return kind === 'outsider' ? 'cellstatus potential' : 'cellstatus';
+}
+
+function KindBadge({ kind }: { kind: AdminInvestorRow['kind'] }) {
+  return <div className={kindClass(kind)}>{kindLabel(kind)}</div>;
+}
 
 function CheckIcon() {
   return (
@@ -275,6 +289,9 @@ function InvestorSlideout({
           <div>
             <div className="pagetitle small">{investor.fullName || investor.email}</div>
             <div className="dimsmall">{investor.email}</div>
+            <div className="alignrow aligncenter" style={{ gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+              <KindBadge kind={investor.kind} />
+            </div>
             <div className="speevy-slideout-stats">
               <div className="speevy-slideout-stat">
                 <span>Joined</span>
@@ -624,7 +641,12 @@ export function AdminInvestorsTable({
                   </div>
                   <div>
                     <div className="cellname">{investor.fullName || investor.email}</div>
-                    <div className={statusClass(investor.status)}>{statusLabels[investor.status]}</div>
+                    <div className="alignrow aligncenter" style={{ gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
+                      <KindBadge kind={investor.kind} />
+                      {investor.kind === 'insider' ? (
+                        <div className={statusClass(investor.status)}>{statusLabels[investor.status]}</div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
                 <div className="tablecell">

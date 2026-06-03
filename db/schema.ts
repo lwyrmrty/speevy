@@ -47,6 +47,9 @@ export const lpStatus = pgEnum('lp_status', [
   'approved',
   'rejected',
   'removed',
+  // People who unlocked a password-protected opportunity via a shared direct
+  // link (email + password). Not invited LPs; no auth user. See 0008 migration.
+  'outsider',
 ]);
 
 export const kycStatus = pgEnum('kyc_status', [

@@ -80,17 +80,26 @@ export async function POST(request: Request) {
 
   if (hasLoopsLpApprovedEnv()) {
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       (investors ?? []).map((investor) =>
         sendLpApprovedEmail({
           approvedAt: now,
           email: investor.email,
+          firstName: investor.full_name?.trim().split(/\s+/)[0] || investor.email,
           investorName: investor.full_name || investor.email,
           loginUrl: `${appUrl}/login`,
           idempotencyKey: `lp-approved-${investor.id}-${now}`,
         }),
       ),
     );
+    results.forEach((result) => {
+      if (result.status === 'rejected') {
+        console.error(
+          'LP approved email failed:',
+          result.reason instanceof Error ? result.reason.message : result.reason,
+        );
+      }
+    });
   }
 
   return NextResponse.json({ message: `${ids.length} investors approved.` });

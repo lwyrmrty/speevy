@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   title: 'Manage Investors | Speevy',
 };
 
-type LpStatus = 'invited' | 'onboarding' | 'pending_review' | 'approved' | 'rejected' | 'removed';
+type LpStatus = 'invited' | 'onboarding' | 'pending_review' | 'approved' | 'rejected' | 'removed' | 'outsider';
 
 type InvestorRow = {
   id: string;
@@ -160,6 +160,9 @@ export default async function AdminInvestorsPage({
     fullName: investor.full_name,
     entityName: investor.entity_name,
     status: investor.status,
+    // "Insiders" are invited LPs; "outsiders" unlocked a password-protected
+    // opportunity via a shared direct link.
+    kind: investor.status === 'outsider' ? 'outsider' : 'insider',
     sectors: normalizeSectors(investor.sectors_interested),
     investmentRangeMin: investor.investment_range_min_cents,
     investmentRangeMax: investor.investment_range_max_cents,

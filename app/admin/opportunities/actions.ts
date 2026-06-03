@@ -1,10 +1,9 @@
 'use server';
 
-import { createHash } from 'node:crypto';
-
 import { z } from 'zod';
 
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
+import { hashOpportunityPassword } from '@/lib/opportunity-password';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -99,10 +98,6 @@ function moneyToCents(value?: string) {
 function percentToBasisPoints(value?: string) {
   const cleaned = value?.replace(/[^\d.]/g, '') ?? '';
   return cleaned ? Math.round(Number(cleaned) * 100) : null;
-}
-
-function passwordHash(password: string) {
-  return createHash('sha256').update(password).digest('hex');
 }
 
 function safeFileName(name: string) {
@@ -302,7 +297,7 @@ export async function saveOpportunityDraft(
     thumbnail_storage_key: data.thumbnailStorageKey || null,
     logo_storage_key: data.logoStorageKey || null,
     password_hash: data.passwordProtected
-      ? (password ? passwordHash(password) : existingOpportunity?.password_hash)
+      ? (password ? hashOpportunityPassword(password) : existingOpportunity?.password_hash)
       : null,
     published_at: shouldBePublished ? existingOpportunity?.published_at ?? savedAt : null,
     updated_at: savedAt,

@@ -264,7 +264,7 @@ export async function saveOpportunityDraft(
     ? { data: null }
     : await adminSupabase
         .from('opportunities')
-        .select('id, password_hash')
+        .select('id, password_hash, published_at')
         .eq('slug', slug)
         .maybeSingle();
 
@@ -279,6 +279,7 @@ export async function saveOpportunityDraft(
     };
   }
 
+  const shouldBePublished = data.status !== 'draft';
   const opportunityFields = {
     slug,
     title: data.title,
@@ -303,6 +304,7 @@ export async function saveOpportunityDraft(
     password_hash: data.passwordProtected
       ? (password ? passwordHash(password) : existingOpportunity?.password_hash)
       : null,
+    published_at: shouldBePublished ? existingOpportunity?.published_at ?? savedAt : null,
     updated_at: savedAt,
   };
 

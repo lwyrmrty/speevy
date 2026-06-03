@@ -38,6 +38,11 @@ function moneyToCents(value: string) {
   return digits ? Number(digits) * 100 : 0;
 }
 
+type InterestMessage = {
+  status: 'success' | 'error';
+  text: string;
+};
+
 export function OpportunityInterestCard({
   isGuest = false,
   minimumInvestmentCents,
@@ -52,7 +57,7 @@ export function OpportunityInterestCard({
   const [interested, setInterested] = useState(false);
   const [amount, setAmount] = useState('');
   const [email, setEmail] = useState('');
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState<InterestMessage | null>(null);
   const [saving, setSaving] = useState(false);
   const isPast = variant === 'past';
   const amountCents = moneyToCents(amount);
@@ -60,15 +65,15 @@ export function OpportunityInterestCard({
   const canConfirm = (isPast || amountCents >= minimumInvestmentCents) && !saving;
 
   useEffect(() => {
-    if (!message || isPast) return;
+    if (!message) return;
 
-    const timeout = window.setTimeout(() => setMessage(''), 3000);
+    const timeout = window.setTimeout(() => setMessage(null), 3000);
     return () => window.clearTimeout(timeout);
-  }, [isPast, message]);
+  }, [message]);
 
   async function savePastInterest() {
     setSaving(true);
-    setMessage('');
+    setMessage(null);
 
     const result = await saveOpportunityInterest({
       opportunityId,
@@ -78,11 +83,12 @@ export function OpportunityInterestCard({
     setSaving(false);
 
     if (result.status === 'success') {
+      setMessage({ status: 'success', text: 'Interest saved.' });
       return;
     }
 
     setInterested(false);
-    setMessage(result.message);
+    setMessage({ status: 'error', text: result.message });
   }
 
   return (
@@ -94,7 +100,7 @@ export function OpportunityInterestCard({
         onClick={() => {
           const nextInterested = !interested;
           setInterested(nextInterested);
-          setMessage('');
+          setMessage(null);
 
           if (isPast && nextInterested) {
             void savePastInterest();
@@ -139,7 +145,7 @@ export function OpportunityInterestCard({
               value={amount}
               onChange={(event) => {
                 setAmount(formatCurrencyInput(event.currentTarget.value));
-                setMessage('');
+                setMessage(null);
               }}
             />
             {belowMinimum ? (
@@ -157,7 +163,7 @@ export function OpportunityInterestCard({
           disabled={!canConfirm}
           onClick={async () => {
             setSaving(true);
-            setMessage('');
+            setMessage(null);
 
             const result = await saveOpportunityInterest({
               opportunityId,
@@ -165,19 +171,17 @@ export function OpportunityInterestCard({
             });
 
             setSaving(false);
-            setMessage(
-              result.status === 'success'
-                ? 'Interest saved.'
-                : result.message,
-            );
+            setMessage(result.status === 'success'
+              ? { status: 'success', text: 'Interest saved.' }
+              : { status: 'error', text: result.message });
           }}
         >
           <div>{saving ? 'Saving...' : 'Confirm Interest'}</div>
         </button>
       ) : null}
       {message ? (
-        <div className="interest-toast" role="status" aria-live="polite">
-          {message}
+        <div className={`interest-toast ${message.status}`} role="status" aria-live="polite">
+          {message.text}
         </div>
       ) : null}
     </div>

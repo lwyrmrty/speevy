@@ -11,15 +11,21 @@ export const metadata: Metadata = {
 type InterestRow = {
   amount_cents: number | string | null;
   indicated_at: string;
-  lps: {
-    email: string;
-    full_name: string | null;
-  }[] | null;
+  lps: InterestLp | InterestLp[] | null;
+};
+
+type InterestLp = {
+  email: string;
+  full_name: string | null;
 };
 
 function centsToNumber(value: number | string | null) {
   if (value === null) return 0;
   return Number(value);
+}
+
+function getInterestLp(lps: InterestRow['lps']) {
+  return Array.isArray(lps) ? lps[0] : lps;
 }
 
 function formatInterestAmount(value: number | string | null) {
@@ -142,7 +148,7 @@ export default async function OpportunityInterestPage({
               </div>
               {interests.length ? (
                 interests.map((interest) => {
-                  const lp = interest.lps?.[0];
+                  const lp = getInterestLp(interest.lps);
                   const label = lp?.full_name || lp?.email || 'Unknown investor';
 
                   return (

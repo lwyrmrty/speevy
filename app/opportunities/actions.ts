@@ -11,9 +11,77 @@ const saveInterestSchema = z.object({
   amountCents: z.number().int().positive().nullable(),
 });
 
+type AdminInterestNotification = {
+  amountCents: number | null;
+  indicatedAt: string;
+  investorEmail: string;
+  investorName: string;
+  opportunityId: string;
+  opportunitySlug: string;
+  opportunityTitle: string;
+  recipientEmail: string;
+};
+
 export type SaveOpportunityInterestResult =
   | { status: 'success' }
   | { status: 'error'; message: string };
+
+function formatInterestAmount(amountCents: number | null) {
+  if (amountCents === null) {
+    return 'No amount shared';
+  }
+
+  return (amountCents / 100).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  });
+}
+
+async function sendAdminInterestNotification({
+  amountCents,
+  indicatedAt,
+  investorEmail,
+  investorName,
+  opportunityId,
+  opportunitySlug,
+  opportunityTitle,
+  recipientEmail,
+}: AdminInterestNotification) {
+  const apiKey = process.env.LOOPS_API_KEY;
+  const transactionalId = process.env.LOOPS_TEMPLATE_ADMIN_INTEREST_UPDATED;
+
+  if (!apiKey || !transactionalId || !recipientEmail) {
+    return;
+  }
+
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
+  const response = await fetch('https://app.loops.so/api/v1/transactional', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': `interest-${opportunityId}-${recipientEmail}-${indicatedAt}`,
+    },
+    body: JSON.stringify({
+      email: recipientEmail,
+      transactionalId,
+      dataVariables: {
+        adminInterestUrl: `${appUrl}/admin/opportunities/${opportunitySlug}/interest`,
+        amount: formatInterestAmount(amountCents),
+        indicatedAt,
+        investorEmail,
+        investorName,
+        opportunityTitle,
+        opportunityUrl: `${appUrl}/opportunities/${opportunitySlug}`,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to send admin interest notification.');
+  }
+}
 
 export async function saveOpportunityInterest(
   payload: z.infer<typeof saveInterestSchema>,
@@ -34,9 +102,15 @@ export async function saveOpportunityInterest(
   }
 
   const supabase = createSupabaseAdminClient();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle();
+  const isAdmin = profile?.role === 'admin';
   const { data: lp } = await supabase
     .from('lps')
-    .select('id, status')
+    .select('id, status, email, full_name')
     .eq('profile_id', user.id)
     .maybeSingle();
 
@@ -46,7 +120,7 @@ export async function saveOpportunityInterest(
 
   const { data: opportunity } = await supabase
     .from('opportunities')
-    .select('id, slug, status, published_at')
+    .select('id, slug, title, status, published_at, visible_to_all_approved_lps')
     .eq('id', parsed.data.opportunityId)
     .maybeSingle();
 
@@ -54,16 +128,31 @@ export async function saveOpportunityInterest(
     return { status: 'error', message: 'This opportunity is not currently accepting interest.' };
   }
 
-  if (['active', 'potential'].includes(opportunity.status)) {
-    if (opportunity.published_at === null) {
+  if (!isAdmin && opportunity.published_at === null) {
+    return { status: 'error', message: 'This opportunity is not currently accepting interest.' };
+  }
+
+  if (!isAdmin && !opportunity.visible_to_all_approved_lps) {
+    const { data: access } = await supabase
+      .from('opportunity_access')
+      .select('opportunity_id')
+      .eq('opportunity_id', opportunity.id)
+      .eq('lp_id', lp.id)
+      .is('revoked_at', null)
+      .maybeSingle();
+
+    if (!access) {
       return { status: 'error', message: 'This opportunity is not currently accepting interest.' };
     }
+  }
 
+  if (['active', 'potential'].includes(opportunity.status)) {
     if (parsed.data.amountCents === null) {
       return { status: 'error', message: 'Enter a valid interest amount.' };
     }
   }
 
+  const indicatedAt = new Date().toISOString();
   const { error } = await supabase
     .from('interests')
     .upsert(
@@ -72,7 +161,7 @@ export async function saveOpportunityInterest(
         lp_id: lp.id,
         status: 'indicated',
         amount_cents: parsed.data.amountCents,
-        indicated_at: new Date().toISOString(),
+        indicated_at: indicatedAt,
         withdrawn_at: null,
       },
       { onConflict: 'opportunity_id,lp_id' },
@@ -93,6 +182,25 @@ export async function saveOpportunityInterest(
       lp_id: lp.id,
     },
   });
+
+  const { data: admins } = await supabase
+    .from('profiles')
+    .select('email')
+    .eq('role', 'admin');
+  await Promise.allSettled(
+    (admins ?? []).map((admin) =>
+      sendAdminInterestNotification({
+        amountCents: parsed.data.amountCents,
+        indicatedAt,
+        investorEmail: lp.email,
+        investorName: lp.full_name || lp.email,
+        opportunityId: opportunity.id,
+        opportunitySlug: opportunity.slug,
+        opportunityTitle: opportunity.title,
+        recipientEmail: admin.email,
+      }),
+    ),
+  );
 
   revalidatePath('/opportunities');
   revalidatePath(`/opportunities/${opportunity.slug}`);

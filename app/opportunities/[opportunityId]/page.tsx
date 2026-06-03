@@ -669,7 +669,7 @@ export default async function OpportunityPreviewPage({
   return (
     <>
       <WebflowStyles />
-      <div className="pagewrapper">
+      <div id="opportunity-top" className="pagewrapper">
         {opportunity.watermark_enabled ? <PageWatermark email={user.email ?? ''} /> : null}
         <div className="pagenav">
           <div className="pagecontainer navcontainer">

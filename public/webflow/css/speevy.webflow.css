@@ -1086,6 +1086,31 @@ strong {
   background-color: #13867b;
 }
 
+.interest-toast {
+  z-index: 10001;
+  color: var(--white);
+  background-color: var(--slate);
+  border: 1.5px solid #ffffff33;
+  border-radius: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35em;
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  box-shadow: 0 14px 34px #001d1a24;
+}
+
+.interest-toast.success {
+  background-color: var(--green);
+}
+
+.interest-toast.error {
+  background-color: #a43a3a;
+}
+
 .checkicon {
   color: #fff;
   width: 13px;
@@ -3562,7 +3587,10 @@ strong {
 .interestrow {
   flex-flow: column;
   flex: 1;
-  margin-bottom: -15px;
+  justify-content: center;
+  margin-bottom: 0;
+  padding-top: 20px;
+  padding-bottom: 22px;
   display: flex;
 }
 
@@ -3598,11 +3626,16 @@ strong {
 }
 
 .dollarinterest {
-  font-size: 14px;
+  text-align: center;
+  font-size: 12.6px;
   font-weight: 600;
   line-height: 1em;
   position: absolute;
-  inset: 18px 0% auto auto;
+  inset: 18px 0% auto;
+}
+
+.dollarinterest-of {
+  opacity: .4;
 }
 
 .cellicon {

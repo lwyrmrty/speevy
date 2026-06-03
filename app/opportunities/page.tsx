@@ -40,11 +40,13 @@ type OpportunityCardRow = OpportunityRow & {
 type InterestRow = {
   amount_cents: number | string | null;
   status: 'indicated' | 'committed' | 'withdrawn';
-  opportunities: {
-    slug: string;
-    title: string;
-    logo_storage_key: string | null;
-  }[] | null;
+  opportunities: InterestOpportunity | InterestOpportunity[] | null;
+};
+
+type InterestOpportunity = {
+  slug: string;
+  title: string;
+  logo_storage_key: string | null;
 };
 
 type InterestDisplayRow = InterestRow & {
@@ -124,6 +126,10 @@ function normalizeSectors(value: unknown) {
       && (INVESTOR_SECTORS as readonly string[]).includes(sector),
     ),
   ));
+}
+
+function getInterestOpportunity(opportunities: InterestRow['opportunities']) {
+  return Array.isArray(opportunities) ? opportunities[0] : opportunities;
 }
 
 function basisPointsToPercent(value: number | null) {
@@ -346,13 +352,13 @@ function InterestedOpportunities({
   return (
     <div className="sidelinks-list">
       {interests.map((interest) => {
-        const opportunity = interest.opportunities?.[0];
+        const opportunity = getInterestOpportunity(interest.opportunities);
         if (!opportunity) return null;
 
         return (
           <Link
             key={opportunity.slug}
-            href={`/opportunities/${opportunity.slug}`}
+            href={`/opportunities/${opportunity.slug}#opportunity-top`}
             className="sidelink borders w-inline-block"
           >
             <div className="alignrow aligncenter _10">
@@ -513,7 +519,7 @@ export default async function OpportunitiesHomePage() {
   const interestDisplays = await Promise.all(
     interestRows.map(async (interest) => ({
       ...interest,
-      logoUrl: await signedAssetUrl(interest.opportunities?.[0]?.logo_storage_key ?? null),
+      logoUrl: await signedAssetUrl(getInterestOpportunity(interest.opportunities)?.logo_storage_key ?? null),
     })),
   );
   const displayName = profile?.full_name || lp?.full_name || profile?.email || user.email;

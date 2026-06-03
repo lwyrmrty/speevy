@@ -50,6 +50,29 @@ function centsToNumber(value: number | string | null) {
   return Number(value);
 }
 
+function formatCompactCurrency(cents: number) {
+  const dollars = cents / 100;
+  const absDollars = Math.abs(dollars);
+
+  if (absDollars >= 1_000_000) {
+    return `$${new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: 1,
+    }).format(dollars / 1_000_000)}M`;
+  }
+
+  if (absDollars >= 1_000) {
+    return `$${new Intl.NumberFormat('en-US', {
+      maximumFractionDigits: 0,
+    }).format(dollars / 1_000)}k`;
+  }
+
+  return dollars.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  });
+}
+
 function pluralize(count: number, singular: string, plural = `${singular}s`) {
   return count === 1 ? singular : plural;
 }
@@ -228,6 +251,11 @@ export default async function AdminOpportunitiesPage() {
                                 style={{ width: `${progressWidth}%` }}
                               >
                                 <div className="percentinterest">{interestPercent}%</div>
+                              </div>
+                              <div className="dollarinterest">
+                                {formatCompactCurrency(opportunity.metrics.interestAmountCents)}{' '}
+                                <span className="dollarinterest-of">of</span>{' '}
+                                {formatCompactCurrency(targetAllocationCents)}
                               </div>
                             </div>
                           </div>

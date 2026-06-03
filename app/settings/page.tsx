@@ -130,6 +130,11 @@ export default async function SettingsPage() {
               </div>
             </div>
             <div className="navalign">
+              {profile?.role === 'admin' ? (
+                <Link href="/admin/opportunities" className="button short secondary w-inline-block">
+                  <div>Admin View</div>
+                </Link>
+              ) : null}
               <div className="profileblock">
                 <Link href="/settings" className="profilelink w-inline-block">
                   <div className="profilesquare">

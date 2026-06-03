@@ -53,6 +53,17 @@ export default async function EditOpportunityPage({
         .order('position', { ascending: true })
     : { data: [] };
 
+  // Read the actual gate password via the service-role client (admin-only route)
+  // so the editor can show and reveal it. It lives in its own LP-inaccessible
+  // table; it is never included in any LP-facing opportunity query.
+  const { data: accessPassword } = opportunity?.id
+    ? await supabase
+        .from('opportunity_access_passwords')
+        .select('password')
+        .eq('opportunity_id', opportunity.id)
+        .maybeSingle()
+    : { data: null };
+
   const getSignedAssetUrl = async (storageKey: string | null) => {
     if (!storageKey) {
       return null;
@@ -90,6 +101,8 @@ export default async function EditOpportunityPage({
           ndaRequired: opportunity.nda_required,
           watermarkEnabled: opportunity.watermark_enabled,
           passwordProtected: opportunity.password_protected,
+          // The actual gate password (plaintext) so the admin can view/reveal it.
+          password: accessPassword?.password ?? null,
           thumbnailStorageKey: opportunity.thumbnail_storage_key,
           logoStorageKey: opportunity.logo_storage_key,
           thumbnailUrl,

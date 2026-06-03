@@ -5,6 +5,10 @@ import {
   type AdminInvestorRow,
 } from '@/components/webflow/admin-investors-table';
 import { AdminInvestorsFallbackScript } from '@/components/webflow/admin-investors-fallback-script';
+import {
+  AdminInvestorsStatusFilter,
+  type InvestorStatusFilterValue,
+} from '@/components/webflow/admin-investors-status-filter';
 import { CopyInvestorInviteLinkButton } from '@/components/webflow/copy-investor-invite-link-button';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
@@ -58,17 +62,25 @@ function getInterestOpportunity(opportunities: InterestRow['opportunities']) {
   return Array.isArray(opportunities) ? opportunities[0] : opportunities;
 }
 
+function parseStatusFilter(value: string | string[] | undefined): InvestorStatusFilterValue {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw === 'insider' || raw === 'outsider' ? raw : 'all';
+}
+
 export default async function AdminInvestorsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ investor?: string | string[] }>;
+  searchParams?: Promise<{ investor?: string | string[]; status?: string | string[] }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const initialSelectedInvestorId = Array.isArray(resolvedSearchParams.investor)
     ? resolvedSearchParams.investor[0]
     : resolvedSearchParams.investor;
+  const statusFilter = parseStatusFilter(resolvedSearchParams.status);
   const supabase = createSupabaseAdminClient();
-  const { data: investorsData } = await supabase
+  // "Insiders" are invited LPs (any lifecycle status other than 'outsider');
+  // "outsiders" unlocked a password-protected opportunity via a shared link.
+  let investorsQuery = supabase
     .from('lps')
     .select(`
       id,
@@ -81,8 +93,15 @@ export default async function AdminInvestorsPage({
       investment_range_max_cents,
       created_at
     `)
-    .neq('status', 'removed')
-    .order('updated_at', { ascending: false });
+    .neq('status', 'removed');
+
+  if (statusFilter === 'outsider') {
+    investorsQuery = investorsQuery.eq('status', 'outsider');
+  } else if (statusFilter === 'insider') {
+    investorsQuery = investorsQuery.neq('status', 'outsider');
+  }
+
+  const { data: investorsData } = await investorsQuery.order('updated_at', { ascending: false });
 
   const investors = (investorsData ?? []) as InvestorRow[];
   const investorIds = investors.map((investor) => investor.id);
@@ -183,7 +202,10 @@ export default async function AdminInvestorsPage({
           <div>
             <div className="tableheader">
               <div className="pagetitle">Manage Investors</div>
-              <CopyInvestorInviteLinkButton />
+              <div className="speevy-tableheader-actions">
+                <AdminInvestorsStatusFilter value={statusFilter} />
+                <CopyInvestorInviteLinkButton />
+              </div>
             </div>
             <AdminInvestorsTable investors={rows} initialSelectedInvestorId={initialSelectedInvestorId ?? null} />
             <AdminInvestorsFallbackScript />

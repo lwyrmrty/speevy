@@ -7,6 +7,7 @@ export default defineConfig([
   ...nextTypescript,
   globalIgnores([
     '.next/**',
+    '.tools/**',
     '.vercel/**',
     'next-env.d.ts',
     'node_modules/**',

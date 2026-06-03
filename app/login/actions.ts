@@ -4,6 +4,10 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
 import {
+  hasLoopsLoginCodeEnv,
+  sendLoginCodeEmail,
+} from '@/lib/loops/transactional';
+import {
   hasSupabasePublicEnv,
   hasSupabaseServiceRoleEnv,
 } from '@/lib/supabase/env';
@@ -106,6 +110,14 @@ export async function sendLoginCode(
     };
   }
 
+  if (!hasLoopsLoginCodeEnv()) {
+    return {
+      status: 'error',
+      message:
+        'Loops login code email credentials are required before login codes can be sent.',
+    };
+  }
+
   const authorization = await getLoginAuthorization(parsed.data.email);
 
   if (!authorization.allowed) {
@@ -115,15 +127,27 @@ export async function sendLoginCode(
     };
   }
 
-  const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithOtp({
+  const adminSupabase = createSupabaseAdminClient();
+  const { data, error } = await adminSupabase.auth.admin.generateLink({
+    type: 'magiclink',
     email: parsed.data.email,
-    options: {
-      shouldCreateUser: authorization.role === 'lp',
-    },
   });
 
-  if (error) {
+  const loginCode = data.properties?.email_otp;
+
+  if (error || !loginCode) {
+    return {
+      status: 'success',
+      message: genericLoginMessage,
+    };
+  }
+
+  try {
+    await sendLoginCodeEmail({
+      email: parsed.data.email,
+      loginCode,
+    });
+  } catch {
     return {
       status: 'success',
       message: genericLoginMessage,
@@ -175,7 +199,7 @@ export async function verifyLoginCode(
   const { data, error } = await supabase.auth.verifyOtp({
     email: parsed.data.email,
     token: parsed.data.code,
-    type: 'email',
+    type: 'magiclink',
   });
 
   if (error) {

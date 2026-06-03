@@ -11,7 +11,7 @@ import {
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-const lpStatusSchema = z.enum(['invited', 'onboarding', 'pending_review', 'approved', 'rejected', 'removed']);
+const lpStatusSchema = z.enum(['invited', 'onboarding', 'pending_review', 'approved', 'rejected', 'removed', 'outsider']);
 
 const updateInvestorSchema = z.object({
   id: z.string().uuid(),
@@ -37,23 +37,41 @@ type ApprovedInvestorEmailRow = {
   full_name: string | null;
 };
 
+function deriveFirstName(fullName: string | null, email: string) {
+  const trimmed = fullName?.trim();
+  if (trimmed) {
+    return trimmed.split(/\s+/)[0];
+  }
+  return email;
+}
+
+function logEmailFailures(label: string, results: PromiseSettledResult<unknown>[]) {
+  results.forEach((result) => {
+    if (result.status === 'rejected') {
+      console.error(`${label} failed:`, result.reason instanceof Error ? result.reason.message : result.reason);
+    }
+  });
+}
+
 async function sendLpApprovedEmails(investors: ApprovedInvestorEmailRow[], approvedAt: string) {
   if (!hasLoopsLpApprovedEnv() || investors.length === 0) {
     return;
   }
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
-  await Promise.allSettled(
+  const results = await Promise.allSettled(
     investors.map((investor) =>
       sendLpApprovedEmail({
         approvedAt,
         email: investor.email,
+        firstName: deriveFirstName(investor.full_name, investor.email),
         investorName: investor.full_name || investor.email,
         loginUrl: `${appUrl}/login`,
         idempotencyKey: `lp-approved-${investor.id}-${approvedAt}`,
       }),
     ),
   );
+  logEmailFailures('LP approved email', results);
 }
 
 async function ensureAdmin(): Promise<

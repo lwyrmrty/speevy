@@ -41,6 +41,7 @@ type SendLpSignupReceivedEmailParams = {
 type SendLpApprovedEmailParams = {
   approvedAt: string;
   email: string;
+  firstName: string;
   investorName: string;
   loginUrl: string;
   idempotencyKey: string;
@@ -301,6 +302,7 @@ export async function sendAdminLpAccessRequestEmail({
 export async function sendLpApprovedEmail({
   approvedAt,
   email,
+  firstName,
   investorName,
   loginUrl,
   idempotencyKey,
@@ -324,6 +326,7 @@ export async function sendLpApprovedEmail({
       email,
       dataVariables: {
         approvedAt,
+        firstName,
         investorName,
         loginUrl,
       },

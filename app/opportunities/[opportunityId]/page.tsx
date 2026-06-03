@@ -1,15 +1,23 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 
 import { DocumentViewerDrawer } from '@/components/webflow/document-viewer-drawer';
 import { OpportunityInterestCard } from '@/components/webflow/opportunity-interest-card';
+import { OpportunityPasswordGate } from '@/components/webflow/opportunity-password-gate';
 import { PageWatermark } from '@/components/webflow/page-watermark';
 import { SectionMiniNav } from '@/components/webflow/section-mini-nav';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
+import {
+  opportunityAccessCookieName,
+  verifyOpportunityAccessToken,
+} from '@/lib/opportunity-access';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+
+const SHAREABLE_STATUSES = ['active', 'potential', 'past'];
 
 export const dynamic = 'force-dynamic';
 
@@ -523,34 +531,98 @@ export default async function OpportunityPreviewPage({
 }: {
   params: Promise<{ opportunityId: string }>;
 }) {
+  const { opportunityId } = await params;
   const serverSupabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await serverSupabase.auth.getUser();
 
-  if (!user) {
-    redirect('/login');
-  }
-
-  const { opportunityId } = await params;
   const supabase = createSupabaseAdminClient();
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .maybeSingle();
-  const { data: lp } = await supabase
-    .from('lps')
-    .select('id, status')
-    .eq('profile_id', user.id)
-    .maybeSingle();
-  const isAdmin = profile?.role === 'admin';
 
-  if (!isAdmin && lp?.status !== 'approved') {
-    redirect('/onboarding');
+  let isAdmin = false;
+  let lp: { id: string; status: string } | null = null;
+
+  if (user) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+    isAdmin = profile?.role === 'admin';
+    const { data: lpRow } = await supabase
+      .from('lps')
+      .select('id, status')
+      .eq('profile_id', user.id)
+      .maybeSingle();
+    lp = lpRow;
   }
 
-  const contentClient = isAdmin ? supabase : serverSupabase;
+  // Lightweight gate lookup. Always via the service-role client because an
+  // outsider (no auth session) must be able to reach the password gate, and
+  // because we need to know whether the opportunity is password protected
+  // before deciding how to authorize the viewer.
+  const { data: gate } = await supabase
+    .from('opportunities')
+    .select('id, slug, title, teaser, status, password_protected, published_at')
+    .eq('slug', opportunityId)
+    .is('archived_at', null)
+    .maybeSingle();
+
+  if (!gate) {
+    notFound();
+  }
+
+  const isShareable = gate.published_at !== null && SHAREABLE_STATUSES.includes(gate.status);
+
+  // Resolve the outsider access cookie for password-protected opportunities.
+  let guestEmail: string | null = null;
+  if (gate.password_protected && !isAdmin) {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(opportunityAccessCookieName(gate.id))?.value;
+    guestEmail = verifyOpportunityAccessToken(token, gate.id);
+  }
+
+  // Password-protected, shared via direct link: anyone who is not an admin must
+  // unlock with the admin-chosen password + their email. A draft that is also
+  // password protected is admin-only (never shareable).
+  if (gate.password_protected && !isAdmin) {
+    if (!isShareable) {
+      notFound();
+    }
+
+    if (!guestEmail) {
+      return (
+        <>
+          <WebflowStyles />
+          <OpportunityPasswordGate slug={gate.slug} title={gate.title} teaser={gate.teaser} />
+        </>
+      );
+    }
+  }
+
+  // Normal (non-password) opportunities keep the invited-LP-only behavior.
+  if (!gate.password_protected) {
+    if (!user) {
+      redirect('/login');
+    }
+
+    if (!isAdmin && lp?.status !== 'approved') {
+      redirect('/onboarding');
+    }
+  }
+
+  const viewerKind: 'admin' | 'lp' | 'guest' = isAdmin
+    ? 'admin'
+    : guestEmail
+      ? 'guest'
+      : 'lp';
+  const isGuest = viewerKind === 'guest';
+  const viewerEmail = isGuest ? (guestEmail ?? '') : (user?.email ?? '');
+
+  // Belt and suspenders: admins and outsiders read via the service-role client
+  // (guarded by the checks above); invited LPs read via their RLS-bound session
+  // so the database independently enforces their access.
+  const contentClient = viewerKind === 'lp' ? serverSupabase : supabase;
   const { data: opportunity } = await contentClient
     .from('opportunities')
     .select(
@@ -580,22 +652,39 @@ export default async function OpportunityPreviewPage({
     .is('archived_at', null)
     .maybeSingle();
 
-  if (!opportunity || (!isAdmin && !['active', 'potential', 'past'].includes(opportunity.status))) {
+  if (!opportunity || (viewerKind !== 'admin' && !isShareable)) {
     notFound();
   }
 
-  if (!isAdmin && opportunity.password_protected) {
-    notFound();
+  // Resolve the viewer's LP id for interest lookups: invited LP via session,
+  // outsider via the email they unlocked with.
+  let interestLpId: string | null = lp?.id ?? null;
+  if (isGuest && guestEmail) {
+    const { data: guestLp } = await supabase
+      .from('lps')
+      .select('id')
+      .eq('email', guestEmail)
+      .maybeSingle();
+    interestLpId = guestLp?.id ?? null;
   }
 
-  if (!isAdmin) {
+  if (viewerKind === 'lp') {
     await supabase.from('audit_log').insert({
-      actor_profile_id: user.id,
+      actor_profile_id: user?.id ?? null,
       actor_role: 'lp',
       action: 'opportunity.viewed',
       entity_type: 'opportunity',
       entity_id: opportunity.id,
       metadata: { slug: opportunity.slug },
+    });
+  } else if (isGuest) {
+    await supabase.from('audit_log').insert({
+      actor_profile_id: null,
+      actor_role: 'lp',
+      action: 'opportunity.viewed',
+      entity_type: 'opportunity',
+      entity_id: opportunity.id,
+      metadata: { slug: opportunity.slug, lp_id: interestLpId, source: 'password_gate' },
     });
   }
 
@@ -604,12 +693,12 @@ export default async function OpportunityPreviewPage({
     status: string;
   } | null = null;
 
-  if (lp?.id) {
+  if (interestLpId) {
     const { data } = await supabase
       .from('interests')
       .select('amount_cents, status')
       .eq('opportunity_id', opportunity.id)
-      .eq('lp_id', lp.id)
+      .eq('lp_id', interestLpId)
       .is('withdrawn_at', null)
       .maybeSingle();
 
@@ -690,7 +779,7 @@ export default async function OpportunityPreviewPage({
     <>
       <WebflowStyles />
       <div id="opportunity-top" className="pagewrapper">
-        {opportunity.watermark_enabled ? <PageWatermark email={user.email ?? ''} /> : null}
+        {opportunity.watermark_enabled ? <PageWatermark email={viewerEmail} /> : null}
         <div className="pagenav">
           <div className="pagecontainer navcontainer">
             <div className="navalign">
@@ -841,7 +930,7 @@ export default async function OpportunityPreviewPage({
                   key={`${section.type}-${section.position}`}
                   section={section}
                   assetUrls={sectionAssetUrls}
-                  watermarkEmail={user.email ?? ''}
+                  watermarkEmail={viewerEmail}
                 />
               ))}
             </div>

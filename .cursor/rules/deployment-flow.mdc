@@ -8,6 +8,7 @@ alwaysApply: true
 - Work from the app repo at `/Users/matvogels/Documents/Speevy/speevy`.
 - Production deploys should be based on a clean Git commit, not the dirty working tree.
 - Before committing or deploying, run `pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run verify`.
+- Before deploying UI/UX changes to production, run the feature locally or on a preview deployment and ask the user to review the actual behavior. Do not treat agent-only visual checks as sufficient user acceptance for production.
 - After production deploys, run `pnpm --dir "/Users/matvogels/Documents/Speevy/speevy" run check:production`.
 - Include only production-relevant files. Do not commit `supabase/.temp`, `.next`, `*.tsbuildinfo`, `.vercel`, unrelated Webflow export HTML, or unreferenced generated image variants unless the app references them.
 - `pnpm-workspace.yaml` contains required pnpm `allowBuilds` approvals for Vercel/pnpm installs. Keep it when changing package/install behavior.
@@ -23,7 +24,7 @@ alwaysApply: true
 
 # Deployment Paths
 
-- Preferred path: push a branch to `https://github.com/lwyrmrty/speevy.git`, open a PR, wait for CI (`pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm build`), merge to `main`, and let Vercel auto-deploy from GitHub.
+- Preferred path: push a branch to `https://github.com/lwyrmrty/speevy.git`, open a PR, wait for CI (`pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm build`), get user sign-off from local or preview testing for UI changes, merge to `main`, and let Vercel auto-deploy from GitHub.
 - Do not deploy from a dirty working tree. GitHub should be the source of truth for production.
 - Direct Vercel deploys are emergency-only. If GitHub auth is unavailable and a direct deploy is unavoidable, use a clean temporary worktree from the commit to avoid uploading untracked Webflow artifacts:
   - `git -C "/Users/matvogels/Documents/Speevy/speevy" worktree add --detach "/Users/matvogels/Documents/Speevy/speevy-vercel-deploy" HEAD`

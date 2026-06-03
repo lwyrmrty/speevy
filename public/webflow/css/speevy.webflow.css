@@ -1738,7 +1738,7 @@ strong {
 }
 
 .page-watermark {
-  z-index: 98;
+  z-index: 9998;
   opacity: .055;
   pointer-events: none;
   position: fixed;

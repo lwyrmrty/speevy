@@ -3,6 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
+import {
+  hasLoopsAdminInterestEnv,
+  sendAdminInterestEmail,
+} from '@/lib/loops/transactional';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -48,39 +52,22 @@ async function sendAdminInterestNotification({
   opportunityTitle,
   recipientEmail,
 }: AdminInterestNotification) {
-  const apiKey = process.env.LOOPS_API_KEY;
-  const transactionalId = process.env.LOOPS_TEMPLATE_ADMIN_INTEREST_UPDATED;
-
-  if (!apiKey || !transactionalId || !recipientEmail) {
+  if (!recipientEmail || !hasLoopsAdminInterestEnv()) {
     return;
   }
 
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
-  const response = await fetch('https://app.loops.so/api/v1/transactional', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'Idempotency-Key': `interest-${opportunityId}-${recipientEmail}-${indicatedAt}`,
-    },
-    body: JSON.stringify({
-      email: recipientEmail,
-      transactionalId,
-      dataVariables: {
-        adminInterestUrl: `${appUrl}/admin/opportunities/${opportunitySlug}/interest`,
-        amount: formatInterestAmount(amountCents),
-        indicatedAt,
-        investorEmail,
-        investorName,
-        opportunityTitle,
-        opportunityUrl: `${appUrl}/opportunities/${opportunitySlug}`,
-      },
-    }),
+  await sendAdminInterestEmail({
+    adminInterestUrl: `${appUrl}/admin/opportunities/${opportunitySlug}/interest`,
+    amount: formatInterestAmount(amountCents),
+    email: recipientEmail,
+    indicatedAt,
+    investorEmail,
+    investorName,
+    opportunityTitle,
+    opportunityUrl: `${appUrl}/opportunities/${opportunitySlug}`,
+    idempotencyKey: `interest-${opportunityId}-${recipientEmail}-${indicatedAt}`,
   });
-
-  if (!response.ok) {
-    throw new Error('Unable to send admin interest notification.');
-  }
 }
 
 export async function saveOpportunityInterest(

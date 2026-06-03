@@ -38,24 +38,36 @@ function moneyToCents(value: string) {
   return digits ? Number(digits) * 100 : 0;
 }
 
+function centsToCurrencyInput(value: number | null) {
+  if (value === null) {
+    return '';
+  }
+
+  return formatCurrencyInput(String(value / 100));
+}
+
 type InterestMessage = {
   status: 'success' | 'error';
   text: string;
 };
 
 export function OpportunityInterestCard({
+  initialAmountCents = null,
+  initialInterested = false,
   isGuest = false,
   minimumInvestmentCents,
   opportunityId,
   variant = 'standard',
 }: {
+  initialAmountCents?: number | null;
+  initialInterested?: boolean;
   isGuest?: boolean;
   minimumInvestmentCents: number;
   opportunityId: string;
   variant?: 'standard' | 'past';
 }) {
-  const [interested, setInterested] = useState(false);
-  const [amount, setAmount] = useState('');
+  const [interested, setInterested] = useState(initialInterested);
+  const [amount, setAmount] = useState(centsToCurrencyInput(initialAmountCents));
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState<InterestMessage | null>(null);
   const [saving, setSaving] = useState(false);

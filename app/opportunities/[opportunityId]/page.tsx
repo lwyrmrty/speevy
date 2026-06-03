@@ -541,7 +541,7 @@ export default async function OpportunityPreviewPage({
     .maybeSingle();
   const { data: lp } = await supabase
     .from('lps')
-    .select('status')
+    .select('id, status')
     .eq('profile_id', user.id)
     .maybeSingle();
   const isAdmin = profile?.role === 'admin';
@@ -599,6 +599,23 @@ export default async function OpportunityPreviewPage({
     });
   }
 
+  let existingInterest: {
+    amount_cents: number | string | null;
+    status: string;
+  } | null = null;
+
+  if (lp?.id) {
+    const { data } = await supabase
+      .from('interests')
+      .select('amount_cents, status')
+      .eq('opportunity_id', opportunity.id)
+      .eq('lp_id', lp.id)
+      .is('withdrawn_at', null)
+      .maybeSingle();
+
+    existingInterest = data;
+  }
+
   const { data: sections } = await contentClient
     .from('opportunity_sections')
     .select('type, position, data')
@@ -641,6 +658,9 @@ export default async function OpportunityPreviewPage({
   const originationFeeLabel = compactMinAmount(opportunity.origination_fee_cents);
   const showDealTerms = opportunity.status !== 'past';
   const hasPrimaryStats = Boolean(raiseLabel || originationFeeLabel || showDealTerms);
+  const initialInterestAmountCents = existingInterest?.amount_cents == null
+    ? null
+    : centsToNumber(existingInterest.amount_cents);
   const socialLinks = [
     {
       href: externalUrl(opportunity.website_url),
@@ -921,6 +941,8 @@ export default async function OpportunityPreviewPage({
                   </div>
                   <div className="formblock w-form">
                     <OpportunityInterestCard
+                      initialAmountCents={initialInterestAmountCents}
+                      initialInterested={Boolean(existingInterest)}
                       minimumInvestmentCents={centsToNumber(opportunity.minimum_investment_cents)}
                       opportunityId={opportunity.id}
                       variant={opportunity.status === 'past' ? 'past' : 'standard'}

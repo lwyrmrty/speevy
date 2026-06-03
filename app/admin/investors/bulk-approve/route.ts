@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import {
+  hasLoopsLpApprovedEnv,
+  sendLpApprovedEmail,
+} from '@/lib/loops/transactional';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -41,7 +45,7 @@ export async function POST(request: Request) {
   const supabase = createSupabaseAdminClient();
   const { data: investors, error: fetchError } = await supabase
     .from('lps')
-    .select('id, status')
+    .select('id, email, full_name, status')
     .in('id', ids);
 
   if (fetchError) {
@@ -72,6 +76,21 @@ export async function POST(request: Request) {
 
   if (error) {
     return NextResponse.json({ message: error.message }, { status: 500 });
+  }
+
+  if (hasLoopsLpApprovedEnv()) {
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
+    await Promise.allSettled(
+      (investors ?? []).map((investor) =>
+        sendLpApprovedEmail({
+          approvedAt: now,
+          email: investor.email,
+          investorName: investor.full_name || investor.email,
+          loginUrl: `${appUrl}/login`,
+          idempotencyKey: `lp-approved-${investor.id}-${now}`,
+        }),
+      ),
+    );
   }
 
   return NextResponse.json({ message: `${ids.length} investors approved.` });

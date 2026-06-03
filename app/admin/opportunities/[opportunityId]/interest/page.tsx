@@ -9,6 +9,7 @@ export const metadata: Metadata = {
 };
 
 type InterestRow = {
+  lp_id: string;
   amount_cents: number | string | null;
   indicated_at: string;
   lps: InterestLp | InterestLp[] | null;
@@ -17,6 +18,12 @@ type InterestRow = {
 type InterestLp = {
   email: string;
   full_name: string | null;
+};
+
+type SortDirection = 'asc' | 'desc';
+type InterestSort = {
+  field: 'amount' | 'indicated';
+  direction: SortDirection;
 };
 
 function centsToNumber(value: number | string | null) {
@@ -51,12 +58,58 @@ function formatDate(value: string) {
   }).format(date);
 }
 
+function initialsForInvestor(label: string) {
+  return label
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+}
+
+function getInterestSort(value: string | string[] | undefined): InterestSort {
+  const sort = Array.isArray(value) ? value[0] : value;
+
+  if (sort === 'amount_asc' || sort === 'amount_desc') {
+    return {
+      field: 'amount',
+      direction: sort === 'amount_asc' ? 'asc' : 'desc',
+    };
+  }
+
+  if (sort === 'indicated_asc' || sort === 'indicated_desc') {
+    return {
+      field: 'indicated',
+      direction: sort === 'indicated_asc' ? 'asc' : 'desc',
+    };
+  }
+
+  return {
+    field: 'indicated',
+    direction: 'desc',
+  };
+}
+
+function amountSortHref(opportunitySlug: string, sort: InterestSort) {
+  const nextDirection: SortDirection = sort.field === 'amount' && sort.direction === 'desc' ? 'asc' : 'desc';
+  return `/admin/opportunities/${opportunitySlug}/interest?sort=amount_${nextDirection}`;
+}
+
+function indicatedSortHref(opportunitySlug: string, sort: InterestSort) {
+  const nextDirection: SortDirection = sort.field === 'indicated' && sort.direction === 'desc' ? 'asc' : 'desc';
+  return `/admin/opportunities/${opportunitySlug}/interest?sort=indicated_${nextDirection}`;
+}
+
 export default async function OpportunityInterestPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ opportunityId: string }>;
+  searchParams?: Promise<{ sort?: string | string[] }>;
 }) {
   const { opportunityId } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const interestSort = getInterestSort(resolvedSearchParams.sort);
   const supabase = createSupabaseAdminClient();
   const { data: opportunity } = await supabase
     .from('opportunities')
@@ -68,9 +121,10 @@ export default async function OpportunityInterestPage({
     notFound();
   }
 
-  const { data: interestsData } = await supabase
+  let interestsQuery = supabase
     .from('interests')
     .select(`
+      lp_id,
       amount_cents,
       indicated_at,
       lps (
@@ -79,8 +133,20 @@ export default async function OpportunityInterestPage({
       )
     `)
     .eq('opportunity_id', opportunity.id)
-    .neq('status', 'withdrawn')
-    .order('indicated_at', { ascending: false });
+    .neq('status', 'withdrawn');
+
+  if (interestSort.field === 'amount') {
+    interestsQuery = interestsQuery
+      .order('amount_cents', {
+        ascending: interestSort.direction === 'asc',
+        nullsFirst: false,
+      })
+      .order('indicated_at', { ascending: false });
+  } else {
+    interestsQuery = interestsQuery.order('indicated_at', { ascending: interestSort.direction === 'asc' });
+  }
+
+  const { data: interestsData } = await interestsQuery;
 
   const interests = (interestsData ?? []) as InterestRow[];
 
@@ -139,12 +205,32 @@ export default async function OpportunityInterestPage({
                 <div className="tablecell first">
                   <div>Investor</div>
                 </div>
-                <div className="tablecell">
-                  <div>Interest Amount</div>
-                </div>
-                <div className="tablecell">
-                  <div>Indicated</div>
-                </div>
+                <Link
+                  href={amountSortHref(opportunity.slug, interestSort)}
+                  className="tablecell speevy-sort-cell"
+                  aria-label="Sort investor interest by interest amount"
+                  aria-current={interestSort.field === 'amount' ? 'true' : undefined}
+                >
+                  <span className="speevy-table-sort-button">
+                    <span>Interest Amount</span>
+                    <span className="speevy-sort-indicator">
+                      {interestSort.field === 'amount' ? (interestSort.direction === 'desc' ? '↓' : '↑') : '↕'}
+                    </span>
+                  </span>
+                </Link>
+                <Link
+                  href={indicatedSortHref(opportunity.slug, interestSort)}
+                  className="tablecell speevy-sort-cell"
+                  aria-label="Sort investor interest by indication date"
+                  aria-current={interestSort.field === 'indicated' ? 'true' : undefined}
+                >
+                  <span className="speevy-table-sort-button">
+                    <span>When</span>
+                    <span className="speevy-sort-indicator">
+                      {interestSort.field === 'indicated' ? (interestSort.direction === 'desc' ? '↓' : '↑') : '↕'}
+                    </span>
+                  </span>
+                </Link>
               </div>
               {interests.length ? (
                 interests.map((interest) => {
@@ -154,11 +240,27 @@ export default async function OpportunityInterestPage({
                   return (
                     <div className="tablerow" key={`${label}-${interest.indicated_at}`}>
                       <div className="tablecell first">
-                        <div>
-                          <div className="cellname">{label}</div>
-                          {lp?.email && lp.email !== label ? (
-                            <div className="dimsmall">{lp.email}</div>
-                          ) : null}
+                        <div className="speevy-interest-investor-cell">
+                          <div className="alignrow aligncenter">
+                            <div className="profilesquare">
+                              <div>{initialsForInvestor(label)}</div>
+                            </div>
+                            <div>
+                              <div className="cellname">{label}</div>
+                              {lp?.email && lp.email !== label ? (
+                                <div className="dimsmall">{lp.email}</div>
+                              ) : null}
+                            </div>
+                          </div>
+                          <Link
+                            href={`/admin/investors?investor=${interest.lp_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="actionlinks speevy-interest-profile-link w-inline-block"
+                            aria-label={`Open profile for ${label}`}
+                          >
+                            <div>Profile</div>
+                          </Link>
                         </div>
                       </div>
                       <div className="tablecell">

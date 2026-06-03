@@ -119,6 +119,16 @@ function formatJoinedDate(value: string) {
   }).format(date);
 }
 
+function initialsForInvestor(investor: AdminInvestorRow) {
+  const source = investor.fullName || investor.email;
+  return source
+    .split(/[\s@.]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+}
+
 function SectorIconRow({ sectors }: { sectors: InvestorSector[] }) {
   const visibleSectors = sectors.slice(0, 4);
   const hiddenSectors = sectors.slice(4);
@@ -392,9 +402,19 @@ function InvestorSlideout({
   );
 }
 
-export function AdminInvestorsTable({ investors }: { investors: AdminInvestorRow[] }) {
+export function AdminInvestorsTable({
+  investors,
+  initialSelectedInvestorId,
+}: {
+  investors: AdminInvestorRow[];
+  initialSelectedInvestorId?: string | null;
+}) {
   const router = useRouter();
-  const [selectedInvestorId, setSelectedInvestorId] = useState<string | null>(null);
+  const [selectedInvestorId, setSelectedInvestorId] = useState<string | null>(
+    initialSelectedInvestorId && investors.some((investor) => investor.id === initialSelectedInvestorId)
+      ? initialSelectedInvestorId
+      : null,
+  );
   const [selectedInvestorIds, setSelectedInvestorIds] = useState<string[]>([]);
   const [sort, setSort] = useState<{
     field: 'interestedCount' | 'investmentRangeMax';
@@ -438,6 +458,11 @@ export function AdminInvestorsTable({ investors }: { investors: AdminInvestorRow
   useEffect(() => {
     (window as typeof window & { __speevyAdminInvestorsHydrated?: boolean }).__speevyAdminInvestorsHydrated = true;
   }, []);
+
+  function closeInvestorSlideout() {
+    setSelectedInvestorId(null);
+    router.replace('/admin/investors', { scroll: false });
+  }
 
   function toggleInvestorSelection(id: string) {
     setBulkMessage(null);
@@ -594,6 +619,9 @@ export function AdminInvestorsTable({ investors }: { investors: AdminInvestorRow
                       {isSelected ? <CheckIcon /> : null}
                     </button>
                   </div>
+                  <div className="profilesquare">
+                    <div>{initialsForInvestor(investor)}</div>
+                  </div>
                   <div>
                     <div className="cellname">{investor.fullName || investor.email}</div>
                     <div className={statusClass(investor.status)}>{statusLabels[investor.status]}</div>
@@ -636,9 +664,10 @@ export function AdminInvestorsTable({ investors }: { investors: AdminInvestorRow
       {selectedInvestor ? (
         <InvestorSlideout
           investor={selectedInvestor}
-          onClose={() => setSelectedInvestorId(null)}
+          onClose={closeInvestorSlideout}
           onSaved={() => {
             setSelectedInvestorId(null);
+            router.replace('/admin/investors', { scroll: false });
             router.refresh();
           }}
         />

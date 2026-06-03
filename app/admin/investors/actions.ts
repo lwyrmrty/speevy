@@ -4,6 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
+import {
+  hasLoopsLpApprovedEnv,
+  sendLpApprovedEmail,
+} from '@/lib/loops/transactional';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -26,6 +30,31 @@ const bulkApproveInvestorsSchema = z.object({
 export type UpdateInvestorResult =
   | { status: 'success'; message: string }
   | { status: 'error'; message: string };
+
+type ApprovedInvestorEmailRow = {
+  id: string;
+  email: string;
+  full_name: string | null;
+};
+
+async function sendLpApprovedEmails(investors: ApprovedInvestorEmailRow[], approvedAt: string) {
+  if (!hasLoopsLpApprovedEnv() || investors.length === 0) {
+    return;
+  }
+
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
+  await Promise.allSettled(
+    investors.map((investor) =>
+      sendLpApprovedEmail({
+        approvedAt,
+        email: investor.email,
+        investorName: investor.full_name || investor.email,
+        loginUrl: `${appUrl}/login`,
+        idempotencyKey: `lp-approved-${investor.id}-${approvedAt}`,
+      }),
+    ),
+  );
+}
 
 async function ensureAdmin(): Promise<
   | { ok: true; message: string; userId: string }
@@ -79,6 +108,22 @@ export async function updateInvestor(formData: FormData): Promise<UpdateInvestor
   const maxCents = data.investmentRangeMax === null ? null : data.investmentRangeMax * 100;
 
   const supabase = createSupabaseAdminClient();
+  const { data: existingInvestor, error: existingError } = await supabase
+    .from('lps')
+    .select('id, email, full_name, status')
+    .eq('id', data.id)
+    .maybeSingle();
+
+  if (existingError) {
+    return { status: 'error', message: existingError.message };
+  }
+
+  if (!existingInvestor) {
+    return { status: 'error', message: 'Investor could not be found.' };
+  }
+
+  const approvedAt = new Date().toISOString();
+  const shouldSendApprovalEmail = data.status === 'approved' && existingInvestor.status !== 'approved';
   const { error } = await supabase
     .from('lps')
     .update({
@@ -88,12 +133,28 @@ export async function updateInvestor(formData: FormData): Promise<UpdateInvestor
       sectors_interested: data.sectors,
       investment_range_min_cents: minCents,
       investment_range_max_cents: maxCents,
-      updated_at: new Date().toISOString(),
+      ...(shouldSendApprovalEmail
+        ? {
+            approved_at: approvedAt,
+            approved_by_profile_id: auth.userId,
+          }
+        : {}),
+      updated_at: approvedAt,
     })
     .eq('id', data.id);
 
   if (error) {
     return { status: 'error', message: error.message };
+  }
+
+  if (shouldSendApprovalEmail) {
+    await sendLpApprovedEmails([
+      {
+        id: data.id,
+        email: existingInvestor.email,
+        full_name: data.fullName || existingInvestor?.full_name || null,
+      },
+    ], approvedAt);
   }
 
   revalidatePath('/admin/investors');
@@ -115,7 +176,7 @@ export async function bulkApproveInvestors(ids: string[]): Promise<UpdateInvesto
   const supabase = createSupabaseAdminClient();
   const { data: investors, error: fetchError } = await supabase
     .from('lps')
-    .select('id, status')
+    .select('id, email, full_name, status')
     .in('id', uniqueIds);
 
   if (fetchError) {
@@ -145,6 +206,15 @@ export async function bulkApproveInvestors(ids: string[]): Promise<UpdateInvesto
   if (error) {
     return { status: 'error', message: error.message };
   }
+
+  await sendLpApprovedEmails(
+    (investors ?? []).map((investor) => ({
+      id: investor.id,
+      email: investor.email,
+      full_name: investor.full_name,
+    })),
+    now,
+  );
 
   revalidatePath('/admin/investors');
   return {

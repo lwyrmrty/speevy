@@ -30,10 +30,12 @@ type InvestorRow = {
 type InterestRow = {
   lp_id: string;
   amount_cents: number | string | null;
-  opportunities: {
-    title: string;
-    logo_storage_key: string | null;
-  }[] | null;
+  opportunities: InterestOpportunity | InterestOpportunity[] | null;
+};
+
+type InterestOpportunity = {
+  title: string;
+  logo_storage_key: string | null;
 };
 
 function normalizeSectors(value: unknown) {
@@ -52,7 +54,19 @@ function normalizeSectors(value: unknown) {
   )) as InvestorSector[];
 }
 
-export default async function AdminInvestorsPage() {
+function getInterestOpportunity(opportunities: InterestRow['opportunities']) {
+  return Array.isArray(opportunities) ? opportunities[0] : opportunities;
+}
+
+export default async function AdminInvestorsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ investor?: string | string[] }>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const initialSelectedInvestorId = Array.isArray(resolvedSearchParams.investor)
+    ? resolvedSearchParams.investor[0]
+    : resolvedSearchParams.investor;
   const supabase = createSupabaseAdminClient();
   const { data: investorsData } = await supabase
     .from('lps')
@@ -114,7 +128,7 @@ export default async function AdminInvestorsPage() {
     interestTotals.set(interest.lp_id, total + 1);
     const titles = interestTitles.get(interest.lp_id);
     const details = interestDetails.get(interest.lp_id);
-    const opportunity = interest.opportunities?.[0];
+    const opportunity = getInterestOpportunity(interest.opportunities);
     if (titles && opportunity?.title) {
       titles.push(opportunity.title);
     }
@@ -168,7 +182,7 @@ export default async function AdminInvestorsPage() {
               <div className="pagetitle">Manage Investors</div>
               <CopyInvestorInviteLinkButton />
             </div>
-            <AdminInvestorsTable investors={rows} />
+            <AdminInvestorsTable investors={rows} initialSelectedInvestorId={initialSelectedInvestorId ?? null} />
             <AdminInvestorsFallbackScript />
           </div>
         </div>

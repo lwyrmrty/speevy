@@ -61,7 +61,7 @@ export async function AdminNav() {
           </div>
         </div>
         <div className="navalign">
-          <Link href="/" className="navlink w-inline-block">
+          <Link href="/admin/company" className="navlink w-inline-block">
             <div>Company</div>
           </Link>
           <div className="profileblock">

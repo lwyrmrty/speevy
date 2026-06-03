@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 
 import { DocumentViewerDrawer } from '@/components/webflow/document-viewer-drawer';
 import { OpportunityInterestCard } from '@/components/webflow/opportunity-interest-card';
+import { PageWatermark } from '@/components/webflow/page-watermark';
 import { SectionMiniNav } from '@/components/webflow/section-mini-nav';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
@@ -571,7 +572,8 @@ export default async function OpportunityPreviewPage({
         thumbnail_storage_key,
         logo_storage_key,
         status,
-        password_protected
+        password_protected,
+        watermark_enabled
       `,
     )
     .eq('slug', opportunityId)
@@ -668,6 +670,7 @@ export default async function OpportunityPreviewPage({
     <>
       <WebflowStyles />
       <div className="pagewrapper">
+        {opportunity.watermark_enabled ? <PageWatermark email={user.email ?? ''} /> : null}
         <div className="pagenav">
           <div className="pagecontainer navcontainer">
             <div className="navalign">

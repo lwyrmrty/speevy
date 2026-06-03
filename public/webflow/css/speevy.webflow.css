@@ -1737,6 +1737,36 @@ strong {
   white-space: nowrap;
 }
 
+.page-watermark {
+  z-index: 98;
+  opacity: .055;
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.page-watermark-grid {
+  color: var(--slate);
+  letter-spacing: .2em;
+  text-transform: uppercase;
+  grid-template-columns: repeat(4, max-content);
+  gap: 68px 88px;
+  min-width: 150%;
+  min-height: 150%;
+  margin-top: -12%;
+  margin-left: -18%;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1em;
+  display: grid;
+  transform: rotate(-18deg);
+}
+
+.page-watermark-grid span {
+  white-space: nowrap;
+}
+
 .speevy-form-message {
   border: 1.5px solid var(--border);
   border-radius: 8px;

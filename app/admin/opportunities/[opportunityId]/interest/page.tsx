@@ -47,6 +47,19 @@ function formatInterestAmount(value: number | string | null) {
   });
 }
 
+function formatSummedAmount(totalCents: number) {
+  const dollars = totalCents / 100;
+  return dollars.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  });
+}
+
+function formatInvestorCount(count: number) {
+  return `${count} ${count === 1 ? 'investor' : 'investors'}`;
+}
+
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
@@ -149,6 +162,12 @@ export default async function OpportunityInterestPage({
   const { data: interestsData } = await interestsQuery;
 
   const interests = (interestsData ?? []) as InterestRow[];
+
+  const investorCount = interests.length;
+  const totalAmountCents = interests.reduce(
+    (sum, interest) => sum + centsToNumber(interest.amount_cents),
+    0,
+  );
 
   return (
     <div className="pagecontainer breadcrumb">
@@ -285,6 +304,19 @@ export default async function OpportunityInterestPage({
                   </div>
                 </div>
               )}
+              {investorCount ? (
+                <div className="tablerow totalrow">
+                  <div className="tablecell first">
+                    <div>{formatInvestorCount(investorCount)}</div>
+                  </div>
+                  <div className="tablecell">
+                    <div>{formatSummedAmount(totalAmountCents)}</div>
+                  </div>
+                  <div className="tablecell">
+                    <div />
+                  </div>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

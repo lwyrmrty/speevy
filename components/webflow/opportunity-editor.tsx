@@ -19,6 +19,7 @@ import {
   saveOpportunityDraft,
   uploadOpportunityAsset,
 } from '@/app/admin/opportunities/actions';
+import { WebflowPasswordField } from '@/components/webflow/password-field';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
 
@@ -52,6 +53,9 @@ export type OpportunityEditorInitialData = {
     ndaRequired: boolean;
     watermarkEnabled: boolean;
     passwordProtected: boolean;
+    // The actual stored gate password (plaintext, retrievable). Loaded only on
+    // the admin-only editor route so the admin can view and reveal it.
+    password: string | null;
     thumbnailStorageKey: string | null;
     logoStorageKey: string | null;
     thumbnailUrl: string | null;
@@ -1664,6 +1668,94 @@ function CheckboxRow({ label, checked, onChange }: CheckboxRowProps) {
   );
 }
 
+function getOpportunityLink(slug: string) {
+  const path = `/opportunities/${slug}`;
+  const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  const fallbackOrigin = window.location.origin;
+
+  if (!configuredAppUrl) {
+    return new URL(path, fallbackOrigin).toString();
+  }
+
+  try {
+    return new URL(path, configuredAppUrl).toString();
+  } catch {
+    return new URL(path, fallbackOrigin).toString();
+  }
+}
+
+function copyTextWithFallback(text: string) {
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.left = '-9999px';
+  textarea.style.top = '0';
+
+  document.body.appendChild(textarea);
+  textarea.select();
+
+  try {
+    return document.execCommand('copy');
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
+function CopyOpportunityLinkButton({ slug }: { slug: string }) {
+  const [status, setStatus] = useState<'idle' | 'copied' | 'error'>('idle');
+  const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resetTimeoutRef.current) {
+        clearTimeout(resetTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  async function handleCopy() {
+    const link = getOpportunityLink(slug);
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else if (!copyTextWithFallback(link)) {
+        throw new Error('Clipboard copy failed');
+      }
+
+      setStatus('copied');
+    } catch {
+      setStatus('error');
+    }
+
+    if (resetTimeoutRef.current) {
+      clearTimeout(resetTimeoutRef.current);
+    }
+
+    resetTimeoutRef.current = setTimeout(() => {
+      setStatus('idle');
+    }, 2000);
+  }
+
+  const label = status === 'copied'
+    ? 'Link Copied!'
+    : status === 'error'
+      ? 'Copy Failed'
+      : 'Copy Opportunity Link';
+
+  return (
+    <button
+      type="button"
+      className="button short secondary w-inline-block"
+      onClick={handleCopy}
+      aria-live="polite"
+    >
+      <div>{label}</div>
+    </button>
+  );
+}
+
 function UploadPicker({
   className,
   imageSrc,
@@ -1802,7 +1894,9 @@ export function OpportunityEditor({
   const [ndaRequired, setNdaRequired] = useState(initialOpportunity?.ndaRequired ?? false);
   const [watermarkEnabled, setWatermarkEnabled] = useState(initialOpportunity?.watermarkEnabled ?? false);
   const [passwordProtected, setPasswordProtected] = useState(initialOpportunity?.passwordProtected ?? false);
-  const [password, setPassword] = useState('');
+  // Seeded with the actual saved gate password (plaintext) so the field shows
+  // the real value (masked) and the eye toggle can reveal it. Edits replace it.
+  const [password, setPassword] = useState(initialOpportunity?.password ?? '');
   const [thumbnailSrc, setThumbnailSrc] = useState(initialOpportunity?.thumbnailUrl ?? defaultThumbnail);
   const [logoSrc, setLogoSrc] = useState(initialOpportunity?.logoUrl ?? defaultLogo);
   const [thumbnailStorageKey, setThumbnailStorageKey] = useState(initialOpportunity?.thumbnailStorageKey ?? '');
@@ -1878,6 +1972,9 @@ export function OpportunityEditor({
       ndaRequired,
       watermarkEnabled,
       passwordProtected,
+      // The field holds the actual password; send it as-is. Resending the
+      // unchanged value keeps the same password; clearing it is rejected by the
+      // server when password protection is on.
       password,
       thumbnailStorageKey,
       logoStorageKey,
@@ -1998,7 +2095,7 @@ export function OpportunityEditor({
           <div>Investor Interest</div>
         </a>
       </div>
-      <div className="pagecontent lowtop">
+      <div className="pagecontent lowtop" style={{ paddingBottom: 100 }}>
         <div className="pagemain">
           <div className="herocard">
             <img
@@ -2385,16 +2482,22 @@ export function OpportunityEditor({
                     {passwordProtected ? (
                       <div className="formfields-block spacetop">
                         <div className="fieldlabel">Password</div>
-                        <input
+                        <WebflowPasswordField
                           className="formfields w-input"
-                          maxLength={256}
                           name="Opportunity-Password"
-                          data-name="Opportunity Password"
+                          dataName="Opportunity Password"
                           placeholder="e.g. dealio"
-                          type="text"
                           value={password}
-                          onChange={(event) => setPassword(event.currentTarget.value)}
+                          onChange={(event) => {
+                            setPassword(event.currentTarget.value);
+                            markDirty();
+                          }}
                         />
+                        {!isCreating ? (
+                          <div className="spacetop" style={{ marginTop: 10 }}>
+                            <CopyOpportunityLinkButton slug={initialData.slug} />
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>

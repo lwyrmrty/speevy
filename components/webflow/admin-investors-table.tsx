@@ -55,6 +55,46 @@ function KindBadge({ kind }: { kind: AdminInvestorRow['kind'] }) {
   return <div className={kindClass(kind)}>{kindLabel(kind)}</div>;
 }
 
+// Collapses the underlying LP lifecycle status into the two states admins
+// care about on this page (approved vs. still pending), keeping "Rejected"
+// distinct so a rejected investor is never mislabeled as merely pending.
+function insiderStatusBadge(status: AdminInvestorRow['status']) {
+  if (status === 'approved') {
+    return { word: 'Approved', colorClass: 'cellstatus', dimWord: true };
+  }
+
+  if (status === 'rejected') {
+    return { word: 'Rejected', colorClass: 'cellstatus past', dimWord: false };
+  }
+
+  if (status === 'removed') {
+    return { word: 'Removed', colorClass: 'cellstatus past', dimWord: false };
+  }
+
+  // invited | onboarding | pending_review
+  return { word: 'Pending', colorClass: 'cellstatus draft', dimWord: false };
+}
+
+function InsiderStatusBadge({ status }: { status: AdminInvestorRow['status'] }) {
+  const { word, colorClass, dimWord } = insiderStatusBadge(status);
+
+  return (
+    <div className={colorClass}>
+      <span style={{ opacity: 0.5 }}>Insider (</span>
+      <span style={dimWord ? { opacity: 0.5 } : undefined}>{word}</span>
+      <span style={{ opacity: 0.5 }}>)</span>
+    </div>
+  );
+}
+
+function InvestorStatusBadge({ investor }: { investor: AdminInvestorRow }) {
+  if (investor.kind === 'outsider') {
+    return <KindBadge kind={investor.kind} />;
+  }
+
+  return <InsiderStatusBadge status={investor.status} />;
+}
+
 function CheckIcon() {
   return (
     <svg
@@ -72,13 +112,6 @@ function CheckIcon() {
       </g>
     </svg>
   );
-}
-
-function statusClass(status: AdminInvestorRow['status']) {
-  if (status === 'approved') return 'cellstatus';
-  if (status === 'pending_review' || status === 'onboarding') return 'cellstatus potential';
-  if (status === 'invited') return 'cellstatus draft';
-  return 'cellstatus past';
 }
 
 function compactDollarValue(cents: number | null) {
@@ -290,7 +323,7 @@ function InvestorSlideout({
             <div className="pagetitle small">{investor.fullName || investor.email}</div>
             <div className="dimsmall">{investor.email}</div>
             <div className="alignrow aligncenter" style={{ gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
-              <KindBadge kind={investor.kind} />
+              <InvestorStatusBadge investor={investor} />
             </div>
             <div className="speevy-slideout-stats">
               <div className="speevy-slideout-stat">
@@ -553,7 +586,7 @@ export function AdminInvestorsTable({
         ) : null}
       </div>
 
-      <div className="contenttable tooltip-table">
+      <div className="contenttable tooltip-table speevy-investors-table">
         <div className="tablerow headerrow">
           <div className="tablecell first">
             <div className="interestchecks-row spacing">
@@ -641,11 +674,8 @@ export function AdminInvestorsTable({
                   </div>
                   <div>
                     <div className="cellname">{investor.fullName || investor.email}</div>
-                    <div className="alignrow aligncenter" style={{ gap: '6px', marginTop: '4px', flexWrap: 'wrap' }}>
-                      <KindBadge kind={investor.kind} />
-                      {investor.kind === 'insider' ? (
-                        <div className={statusClass(investor.status)}>{statusLabels[investor.status]}</div>
-                      ) : null}
+                    <div className="alignrow aligncenter" style={{ gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
+                      <InvestorStatusBadge investor={investor} />
                     </div>
                   </div>
                 </div>

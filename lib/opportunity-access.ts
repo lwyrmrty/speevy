@@ -94,3 +94,87 @@ export function verifyOpportunityAccessToken(
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Email-verified cookie.
+//
+// Separate from the access cookie above: this records that a specific email
+// completed the emailed-code verification for a specific opportunity. It lasts
+// ~30 days and is keyed to email + opportunity so a returning visitor who
+// re-enters the SAME email (and the correct password) can skip the code step.
+// Entering a DIFFERENT email has no valid cookie and forces re-verification.
+// It carries no secret beyond the email + opportunity it is scoped to, plus an
+// issued-at used to enforce the 30-day lifetime independently of the cookie's
+// own maxAge.
+// ---------------------------------------------------------------------------
+export const OPPORTUNITY_VERIFIED_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+const VERIFIED_TOKEN_VERSION = 'v1';
+
+type VerifiedTokenPayload = {
+  v: string;
+  o: string; // opportunity id
+  e: string; // verified email
+  t: number; // issued-at (ms)
+};
+
+export function opportunityVerifiedCookieName(opportunityId: string) {
+  return `speevy_opp_verified_${opportunityId}`;
+}
+
+export function createOpportunityVerifiedToken(opportunityId: string, email: string) {
+  const payload: VerifiedTokenPayload = {
+    v: VERIFIED_TOKEN_VERSION,
+    o: opportunityId,
+    e: email,
+    t: Date.now(),
+  };
+  const payloadSegment = base64UrlEncode(JSON.stringify(payload));
+  return `${payloadSegment}.${sign(payloadSegment)}`;
+}
+
+// True only if the token is a valid, unexpired (<= 30 days) verification proof
+// for this exact opportunity + email. Email comparison is case-insensitive
+// because gate emails are normalized to lowercase.
+export function isOpportunityVerifiedTokenValid(
+  token: string | undefined,
+  opportunityId: string,
+  email: string,
+): boolean {
+  if (!token) {
+    return false;
+  }
+
+  const [payloadSegment, signatureSegment] = token.split('.');
+
+  if (!payloadSegment || !signatureSegment) {
+    return false;
+  }
+
+  const expectedSignature = sign(payloadSegment);
+  const provided = Buffer.from(signatureSegment);
+  const expected = Buffer.from(expectedSignature);
+
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    return false;
+  }
+
+  try {
+    const payload = JSON.parse(base64UrlDecode(payloadSegment)) as VerifiedTokenPayload;
+
+    if (
+      payload.v !== VERIFIED_TOKEN_VERSION
+      || payload.o !== opportunityId
+      || typeof payload.e !== 'string'
+      || payload.e.toLowerCase() !== email.toLowerCase()
+      || typeof payload.t !== 'number'
+      || Date.now() - payload.t > OPPORTUNITY_VERIFIED_TTL_MS
+    ) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}

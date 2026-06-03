@@ -224,7 +224,6 @@ export const opportunities = pgTable('opportunities', {
   ndaTemplateId: text('nda_template_id'),
   watermarkEnabled: boolean('watermark_enabled').notNull().default(false),
   passwordProtected: boolean('password_protected').notNull().default(false),
-  passwordHash: text('password_hash'),
 
   visibleToAllApprovedLps: boolean('visible_to_all_approved_lps').notNull().default(false),
 
@@ -238,6 +237,70 @@ export const opportunities = pgTable('opportunities', {
   slugIdx: uniqueIndex('opportunities_slug_idx').on(t.slug),
   statusIdx: index('opportunities_status_idx').on(t.status),
 }));
+
+// ---------------------------------------------------------------------------
+// opportunity_access_passwords — the plaintext shared "gate" password for a
+// password-protected opportunity, kept in its own table so it can be isolated
+// from LPs at the RLS layer. LPs can SELECT the opportunities row (title,
+// teaser) but have NO policy on this table, so the password is never reachable
+// by an LP/anon session even via direct PostgREST access. Reads happen only via
+// the service-role client (admin editor load + the public gate verification)
+// and admin-only Server Actions. This is a shared opportunity-gating secret,
+// not a user credential, so it is intentionally stored as retrievable plaintext.
+// ---------------------------------------------------------------------------
+export const opportunityAccessPasswords = pgTable('opportunity_access_passwords', {
+  opportunityId: uuid('opportunity_id')
+    .primaryKey()
+    .references(() => opportunities.id, { onDelete: 'cascade' }),
+  password: text('password').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// opportunity_access_verifications — short-lived email verification codes for
+// the password-protected opportunity gate. After a visitor passes the password
+// check we email them a 6-digit code and require it before granting access.
+//
+// Same isolation model as opportunity_access_passwords: RLS enabled + forced
+// with an admin-only policy and NO LP/anon policy, so codes are only reachable
+// via the service-role client inside the public gate Server Actions. Codes are
+// stored HASHED (HMAC), short TTL, single-use, attempt-limited. Only the email
+// (the identity we already collect at the gate) is stored here — the visitor's
+// name is never persisted in this table.
+// ---------------------------------------------------------------------------
+export const opportunityAccessVerifications = pgTable('opportunity_access_verifications', {
+  opportunityId: uuid('opportunity_id')
+    .notNull()
+    .references(() => opportunities.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  codeHash: text('code_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.opportunityId, t.email] }),
+}));
+
+// ---------------------------------------------------------------------------
+// gate_rate_limits — generic windowed counters used to throttle abuse of the
+// public, unauthenticated opportunity password gate. One row per bucket
+// (e.g. password attempts per IP+slug, code issuances per email or per IP).
+//
+// Same isolation model as the other gate tables: RLS enabled + forced with an
+// admin-only policy and NO LP/anon policy, so counters are only reachable via
+// the service-role client (inside the gate Server Actions). Increments go
+// through the atomic `public.increment_gate_rate_limit` SQL function so
+// concurrent serverless invocations count safely; `expires_at` defines the
+// rolling window so stale rows are naturally ignored without a cleanup job.
+// No PII is stored here — bucket keys are coarse identifiers (IP, slug, email).
+// ---------------------------------------------------------------------------
+export const gateRateLimits = pgTable('gate_rate_limits', {
+  bucketKey: text('bucket_key').primaryKey(),
+  windowStart: timestamp('window_start', { withTimezone: true }).notNull().defaultNow(),
+  count: integer('count').notNull().default(0),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
 
 // ---------------------------------------------------------------------------
 // opportunity_sections — composable section components for each opportunity.

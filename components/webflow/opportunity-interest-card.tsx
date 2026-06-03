@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { saveOpportunityInterest } from '@/app/opportunities/actions';
+import { useToast } from '@/components/ui/toast';
 
 function CheckIcon() {
   return (
@@ -46,11 +47,6 @@ function centsToCurrencyInput(value: number | null) {
   return formatCurrencyInput(String(value / 100));
 }
 
-type InterestMessage = {
-  status: 'success' | 'error';
-  text: string;
-};
-
 export function OpportunityInterestCard({
   initialAmountCents = null,
   initialInterested = false,
@@ -66,26 +62,19 @@ export function OpportunityInterestCard({
   opportunityId: string;
   variant?: 'standard' | 'past';
 }) {
+  const { showToast } = useToast();
   const [interested, setInterested] = useState(initialInterested);
   const [amount, setAmount] = useState(centsToCurrencyInput(initialAmountCents));
   const [email, setEmail] = useState('');
-  const [message, setMessage] = useState<InterestMessage | null>(null);
+  const [hasStoredInterest, setHasStoredInterest] = useState(initialAmountCents !== null);
   const [saving, setSaving] = useState(false);
   const isPast = variant === 'past';
   const amountCents = moneyToCents(amount);
   const belowMinimum = interested && amount && amountCents < minimumInvestmentCents;
   const canConfirm = (isPast || amountCents >= minimumInvestmentCents) && !saving;
 
-  useEffect(() => {
-    if (!message) return;
-
-    const timeout = window.setTimeout(() => setMessage(null), 3000);
-    return () => window.clearTimeout(timeout);
-  }, [message]);
-
   async function savePastInterest() {
     setSaving(true);
-    setMessage(null);
 
     const result = await saveOpportunityInterest({
       opportunityId,
@@ -95,12 +84,12 @@ export function OpportunityInterestCard({
     setSaving(false);
 
     if (result.status === 'success') {
-      setMessage({ status: 'success', text: 'Interest saved.' });
+      showToast({ status: 'success', text: 'Interest saved.' });
       return;
     }
 
     setInterested(false);
-    setMessage({ status: 'error', text: result.message });
+    showToast({ status: 'error', text: result.message });
   }
 
   return (
@@ -112,7 +101,6 @@ export function OpportunityInterestCard({
         onClick={() => {
           const nextInterested = !interested;
           setInterested(nextInterested);
-          setMessage(null);
 
           if (isPast && nextInterested) {
             void savePastInterest();
@@ -157,7 +145,6 @@ export function OpportunityInterestCard({
               value={amount}
               onChange={(event) => {
                 setAmount(formatCurrencyInput(event.currentTarget.value));
-                setMessage(null);
               }}
             />
             {belowMinimum ? (
@@ -175,7 +162,6 @@ export function OpportunityInterestCard({
           disabled={!canConfirm}
           onClick={async () => {
             setSaving(true);
-            setMessage(null);
 
             const result = await saveOpportunityInterest({
               opportunityId,
@@ -183,18 +169,18 @@ export function OpportunityInterestCard({
             });
 
             setSaving(false);
-            setMessage(result.status === 'success'
-              ? { status: 'success', text: 'Interest saved.' }
-              : { status: 'error', text: result.message });
+
+            if (result.status === 'success') {
+              setHasStoredInterest(true);
+              showToast({ status: 'success', text: 'Interest saved.' });
+              return;
+            }
+
+            showToast({ status: 'error', text: result.message });
           }}
         >
-          <div>{saving ? 'Saving...' : 'Confirm Interest'}</div>
+          <div>{saving ? 'Saving...' : hasStoredInterest ? 'Update Interest' : 'Confirm Interest'}</div>
         </button>
-      ) : null}
-      {message ? (
-        <div className={`interest-toast ${message.status}`} role="status" aria-live="polite">
-          {message.text}
-        </div>
       ) : null}
     </div>
   );

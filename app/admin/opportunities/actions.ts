@@ -3,7 +3,6 @@
 import { z } from 'zod';
 
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
-import { hashOpportunityPassword } from '@/lib/opportunity-password';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -259,15 +258,14 @@ export async function saveOpportunityDraft(
     ? { data: null }
     : await adminSupabase
         .from('opportunities')
-        .select('id, password_hash, published_at')
+        .select('id, published_at')
         .eq('slug', slug)
         .maybeSingle();
 
-  if (
-    data.passwordProtected
-    && !password
-    && !existingOpportunity?.password_hash
-  ) {
+  // The editor seeds the field with the actual saved password, so a blank field
+  // means the admin intentionally cleared it. A password-protected opportunity
+  // must always have a gate password.
+  if (data.passwordProtected && !password) {
     return {
       status: 'error',
       message: 'Enter a password before saving a password-protected opportunity.',
@@ -296,9 +294,6 @@ export async function saveOpportunityDraft(
     password_protected: data.passwordProtected,
     thumbnail_storage_key: data.thumbnailStorageKey || null,
     logo_storage_key: data.logoStorageKey || null,
-    password_hash: data.passwordProtected
-      ? (password ? hashOpportunityPassword(password) : existingOpportunity?.password_hash)
-      : null,
     published_at: shouldBePublished ? existingOpportunity?.published_at ?? savedAt : null,
     updated_at: savedAt,
   };
@@ -326,6 +321,34 @@ export async function saveOpportunityDraft(
       status: 'error',
       message: opportunityError?.message ?? 'Could not save opportunity.',
     };
+  }
+
+  // Gate password lives in its own LP-inaccessible table. Upsert it when the
+  // opportunity is password protected; otherwise remove any stored password.
+  if (data.passwordProtected) {
+    const { error: passwordError } = await adminSupabase
+      .from('opportunity_access_passwords')
+      .upsert(
+        {
+          opportunity_id: opportunity.id,
+          password,
+          updated_at: savedAt,
+        },
+        { onConflict: 'opportunity_id' },
+      );
+
+    if (passwordError) {
+      return { status: 'error', message: passwordError.message };
+    }
+  } else {
+    const { error: passwordDeleteError } = await adminSupabase
+      .from('opportunity_access_passwords')
+      .delete()
+      .eq('opportunity_id', opportunity.id);
+
+    if (passwordDeleteError) {
+      return { status: 'error', message: passwordDeleteError.message };
+    }
   }
 
   const { error: deleteSectionsError } = await adminSupabase

@@ -558,6 +558,11 @@ export default async function OpportunitiesHomePage() {
               </div>
             </div>
             <div className="navalign">
+              {isAdmin ? (
+                <Link href="/admin/opportunities" className="button short secondary w-inline-block">
+                  <div>Admin View</div>
+                </Link>
+              ) : null}
               <div className="profileblock">
                 <Link href="/settings" className="profilelink w-inline-block">
                   <div className="profilesquare">

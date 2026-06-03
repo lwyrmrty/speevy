@@ -42,6 +42,15 @@ const statusClasses: Record<OpportunityStatus, string> = {
   past: 'cellstatus past',
 };
 
+// Admins want live deals first, then upcoming, then archived. Draft is slotted
+// with the not-yet-live group so Past stays last as requested.
+const statusSortOrder: Record<OpportunityStatus, number> = {
+  active: 0,
+  potential: 1,
+  draft: 2,
+  past: 3,
+};
+
 function centsToNumber(value: number | string | null) {
   if (value === null) {
     return 0;
@@ -93,7 +102,9 @@ export default async function AdminOpportunitiesPage() {
     .is('archived_at', null)
     .order('created_at', { ascending: false });
 
-  const opportunities = (opportunitiesData ?? []) as OpportunityRow[];
+  const opportunities = ((opportunitiesData ?? []) as OpportunityRow[])
+    .slice()
+    .sort((left, right) => statusSortOrder[left.status] - statusSortOrder[right.status]);
   const opportunityIds = opportunities.map((opportunity) => opportunity.id);
 
   const [{ data: interestsData }, { data: viewsData }] = opportunityIds.length
@@ -225,14 +236,19 @@ export default async function AdminOpportunitiesPage() {
                         <div className="interestchecks-row spacing">
                           <div className="checkboxtoggle sm" />
                         </div>
-                        <div className="rowicon-block">
+                        <Link
+                          href={`/admin/opportunities/${opportunity.slug}/edit`}
+                          className="rowicon-block"
+                          aria-label={`Open ${opportunity.title}`}
+                          style={{ cursor: 'pointer' }}
+                        >
                           <img
                             src={opportunity.imageUrl ?? '/webflow/images/photograph.svg'}
                             loading="lazy"
                             alt=""
                             className="fullimage"
                           />
-                        </div>
+                        </Link>
                         <div>
                           <div className="cellname">{opportunity.title}</div>
                           <div className={statusClasses[opportunity.status]}>

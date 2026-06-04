@@ -36,6 +36,7 @@ export default async function EditOpportunityPage({
         linkedin_url,
         twitter_url,
         nda_required,
+        nda_template_id,
         watermark_enabled,
         password_protected,
         thumbnail_storage_key,
@@ -44,6 +45,12 @@ export default async function EditOpportunityPage({
     )
     .eq('slug', opportunityId)
     .maybeSingle();
+
+  const { data: ndaTemplatesData } = await supabase
+    .from('nda_templates')
+    .select('id, name')
+    .is('archived_at', null)
+    .order('created_at', { ascending: false });
 
   const { data: sections } = opportunity?.id
     ? await supabase
@@ -83,6 +90,7 @@ export default async function EditOpportunityPage({
 
   const initialData: OpportunityEditorInitialData = {
     slug: opportunityId,
+    ndaTemplates: ndaTemplatesData ?? [],
     opportunity: opportunity
       ? {
           status: opportunity.status,
@@ -99,6 +107,7 @@ export default async function EditOpportunityPage({
           linkedinUrl: opportunity.linkedin_url,
           twitterUrl: opportunity.twitter_url,
           ndaRequired: opportunity.nda_required,
+          ndaTemplateId: opportunity.nda_template_id,
           watermarkEnabled: opportunity.watermark_enabled,
           passwordProtected: opportunity.password_protected,
           // The actual gate password (plaintext) so the admin can view/reveal it.

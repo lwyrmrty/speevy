@@ -47,12 +47,22 @@ const saveOpportunitySchema = z.object({
   linkedinUrl: z.string().trim().optional(),
   twitterUrl: z.string().trim().optional(),
   ndaRequired: z.boolean(),
+  // References an nda_templates.id (Speevy NDA catalog). Required when NDA is on.
+  ndaTemplateId: z.string().uuid().nullable().optional(),
   watermarkEnabled: z.boolean(),
   passwordProtected: z.boolean(),
   password: z.string().optional(),
   thumbnailStorageKey: z.string().optional(),
   logoStorageKey: z.string().optional(),
   sections: z.array(sectionSchema),
+}).superRefine((data, ctx) => {
+  if (data.ndaRequired && !data.ndaTemplateId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['ndaTemplateId'],
+      message: 'Select an NDA document before saving an NDA-required opportunity.',
+    });
+  }
 });
 
 export type SaveOpportunityPayload = z.infer<typeof saveOpportunitySchema>;
@@ -290,6 +300,7 @@ export async function saveOpportunityDraft(
     linkedin_url: data.linkedinUrl || null,
     twitter_url: data.twitterUrl || null,
     nda_required: data.ndaRequired,
+    nda_template_id: data.ndaRequired ? data.ndaTemplateId ?? null : null,
     watermark_enabled: data.watermarkEnabled,
     password_protected: data.passwordProtected,
     thumbnail_storage_key: data.thumbnailStorageKey || null,

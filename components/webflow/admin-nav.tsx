@@ -58,6 +58,9 @@ export async function AdminNav() {
             <Link href="/admin/investors" className="navlink w-inline-block">
               <div>Investors</div>
             </Link>
+            <Link href="/admin/nda-templates" className="navlink w-inline-block">
+              <div>NDA Templates</div>
+            </Link>
           </div>
         </div>
         <div className="navalign">

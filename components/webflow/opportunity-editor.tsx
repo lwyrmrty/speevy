@@ -19,6 +19,7 @@ import {
   saveOpportunityDraft,
   uploadOpportunityAsset,
 } from '@/app/admin/opportunities/actions';
+import { Select } from '@/components/base/select/select';
 import { WebflowPasswordField } from '@/components/webflow/password-field';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
@@ -33,9 +34,16 @@ type SectionCard = {
   data?: Record<string, unknown>;
 };
 
+export type NdaTemplateOption = {
+  id: string;
+  name: string;
+};
+
 export type OpportunityEditorInitialData = {
   slug: string;
   createNew?: boolean;
+  // Active (non-archived) NDA catalog rows for the "Require NDA" document picker.
+  ndaTemplates?: NdaTemplateOption[];
   opportunity?: {
     status: OpportunityStatus;
     title: string;
@@ -51,6 +59,7 @@ export type OpportunityEditorInitialData = {
     linkedinUrl: string | null;
     twitterUrl: string | null;
     ndaRequired: boolean;
+    ndaTemplateId: string | null;
     watermarkEnabled: boolean;
     passwordProtected: boolean;
     // The actual stored gate password (plaintext, retrievable). Loaded only on
@@ -1891,7 +1900,11 @@ export function OpportunityEditor({
   const [websiteUrl, setWebsiteUrl] = useState(initialOpportunity?.websiteUrl ?? '');
   const [linkedinUrl, setLinkedinUrl] = useState(initialOpportunity?.linkedinUrl ?? '');
   const [twitterUrl, setTwitterUrl] = useState(initialOpportunity?.twitterUrl ?? '');
+  const ndaTemplates = initialData.ndaTemplates ?? [];
   const [ndaRequired, setNdaRequired] = useState(initialOpportunity?.ndaRequired ?? false);
+  const [ndaTemplateId, setNdaTemplateId] = useState<string | null>(
+    initialOpportunity?.ndaTemplateId ?? null,
+  );
   const [watermarkEnabled, setWatermarkEnabled] = useState(initialOpportunity?.watermarkEnabled ?? false);
   const [passwordProtected, setPasswordProtected] = useState(initialOpportunity?.passwordProtected ?? false);
   // Seeded with the actual saved gate password (plaintext) so the field shows
@@ -1970,6 +1983,7 @@ export function OpportunityEditor({
       linkedinUrl,
       twitterUrl,
       ndaRequired,
+      ndaTemplateId,
       watermarkEnabled,
       passwordProtected,
       // The field holds the actual password; send it as-is. Resending the
@@ -2459,6 +2473,36 @@ export function OpportunityEditor({
                         markDirty();
                       }}
                     />
+                    {ndaRequired ? (
+                      <div className="formfields-block spacetop">
+                        <div className="fieldlabel">NDA document</div>
+                        {ndaTemplates.length > 0 ? (
+                          <Select
+                            aria-label="NDA document"
+                            placeholder="Select an NDA document"
+                            selectedKey={ndaTemplateId}
+                            onSelectionChange={(key) => {
+                              setNdaTemplateId(String(key));
+                              markDirty();
+                            }}
+                            items={ndaTemplates.map((template) => ({
+                              id: template.id,
+                              label: template.name,
+                            }))}
+                          >
+                            {(item) => <Select.Item id={item.id}>{item.label}</Select.Item>}
+                          </Select>
+                        ) : (
+                          <div className="fieldlabel" style={{ opacity: 0.7 }}>
+                            No NDA documents yet. Add one under{' '}
+                            <a href="/admin/nda-templates" className="actionlinks">
+                              NDA Templates
+                            </a>{' '}
+                            first.
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="fieldblock">
                     <CheckboxRow

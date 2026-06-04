@@ -115,6 +115,9 @@ export const auditAction = pgEnum('audit_action', [
   'interest.withdrawn',
   'nda.sent',
   'nda.signed',
+  'nda_template.created',
+  'nda_template.updated',
+  'nda_template.archived',
   'auth.login',
   'auth.logout',
 ]);
@@ -221,7 +224,10 @@ export const opportunities = pgTable('opportunities', {
   thumbnailStorageKey: text('thumbnail_storage_key'),
   logoStorageKey: text('logo_storage_key'),
   ndaRequired: boolean('nda_required').notNull().default(false),
-  ndaTemplateId: text('nda_template_id'),
+  // Points at an nda_templates.id (the Speevy-owned NDA catalog). SignatureAPI
+  // has no listable hosted-template resource, so the catalog row carries the
+  // provider-specific source reference. See docs/nda-gate-design.md §5.2.
+  ndaTemplateId: uuid('nda_template_id').references(() => ndaTemplates.id, { onDelete: 'set null' }),
   watermarkEnabled: boolean('watermark_enabled').notNull().default(false),
   passwordProtected: boolean('password_protected').notNull().default(false),
 
@@ -337,6 +343,35 @@ export const opportunityAccess = pgTable('opportunity_access', {
 }));
 
 // ---------------------------------------------------------------------------
+// nda_templates — Speevy-owned catalog of reusable NDA documents.
+//
+// SignatureAPI exposes no listable hosted-template resource: an NDA is reused
+// via a DOCX/PDF source file the admin uploads to the SignatureAPI Library
+// (referenced by a stable URL) with {{merge}} / [[place]] markers. Speevy owns
+// this catalog so the opportunity editor dropdown has something to list, and so
+// historical opportunity_ndas stay attributable to the exact NDA that was
+// signed. Admin-managed only; LPs never read it. Soft-disable via archived_at
+// (never hard delete — preserve attribution). See docs/nda-gate-design.md §5.3.
+// ---------------------------------------------------------------------------
+export const ndaTemplates = pgTable('nda_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  description: text('description'),
+  signatureProvider: text('signature_provider').notNull().default('signatureapi'),
+  // SignatureAPI Library file URL (or stored-upload reference).
+  sourceFileUrl: text('source_file_url').notNull(),
+  // {{merge}} fields + [[place]] positions / recipient roles config.
+  fieldsConfig: jsonb('fields_config').notNull().default({}),
+  version: integer('version').notNull().default(1),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+  createdByProfileId: uuid('created_by_profile_id').notNull().references(() => profiles.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  activeIdx: index('nda_templates_active_idx').on(t.archivedAt),
+}));
+
+// ---------------------------------------------------------------------------
 // opportunity_ndas — NDA signatures tied to a specific opportunity.
 // Required gate for viewing opportunity_sections when nda_required = true.
 // ---------------------------------------------------------------------------
@@ -344,7 +379,7 @@ export const opportunityNdas = pgTable('opportunity_ndas', {
   id: uuid('id').primaryKey().defaultRandom(),
   opportunityId: uuid('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
   lpId: uuid('lp_id').notNull().references(() => lps.id, { onDelete: 'cascade' }),
-  signatureProvider: text('signature_provider').notNull().default('dropbox_sign'),
+  signatureProvider: text('signature_provider').notNull().default('signatureapi'),
   envelopeId: text('envelope_id').notNull(),
   status: signatureStatus('status').notNull().default('sent'),
   sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
@@ -411,10 +446,16 @@ export const lpsRelations = relations(lps, ({ one, many }) => ({
 
 export const opportunitiesRelations = relations(opportunities, ({ one, many }) => ({
   createdBy: one(profiles, { fields: [opportunities.createdByProfileId], references: [profiles.id] }),
+  ndaTemplate: one(ndaTemplates, { fields: [opportunities.ndaTemplateId], references: [ndaTemplates.id] }),
   sections: many(opportunitySections),
   access: many(opportunityAccess),
   ndas: many(opportunityNdas),
   interests: many(interests),
+}));
+
+export const ndaTemplatesRelations = relations(ndaTemplates, ({ one, many }) => ({
+  createdBy: one(profiles, { fields: [ndaTemplates.createdByProfileId], references: [profiles.id] }),
+  opportunities: many(opportunities),
 }));
 
 export const opportunitySectionsRelations = relations(opportunitySections, ({ one }) => ({

@@ -8,10 +8,12 @@ import {
   updateInvestor,
   type UpdateInvestorResult,
 } from '@/app/admin/investors/actions';
+import { LpTagBadge, LpTagEditor } from '@/components/webflow/lp-tag-editor';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import {
   type InvestorSector,
 } from '@/lib/investor-request';
+import { type Tag } from '@/lib/lp-tags';
 
 export type AdminInvestorRow = {
   id: string;
@@ -31,6 +33,7 @@ export type AdminInvestorRow = {
     amountCents: number | string | null;
     logoUrl: string | null;
   }[];
+  tags: Tag[];
 };
 
 const statusLabels: Record<AdminInvestorRow['status'], string> = {
@@ -278,12 +281,16 @@ function InterestedOpportunitiesList({ opportunities }: { opportunities: AdminIn
 
 function InvestorSlideout({
   investor,
+  allTags,
   onClose,
   onSaved,
+  onTagsChanged,
 }: {
   investor: AdminInvestorRow;
+  allTags: Tag[];
   onClose: () => void;
   onSaved: () => void;
+  onTagsChanged: () => void;
 }) {
   const [fullName, setFullName] = useState(investor.fullName ?? '');
   const [entityName, setEntityName] = useState(investor.entityName ?? '');
@@ -421,6 +428,16 @@ function InvestorSlideout({
             </div>
           </div>
 
+          <div className="fieldblock">
+            <div className="fieldlabel">Tags</div>
+            <LpTagEditor
+              lpId={investor.id}
+              assignedTags={investor.tags}
+              allTags={allTags}
+              onChanged={onTagsChanged}
+            />
+          </div>
+
           <div className="fieldrow">
             <div className="fieldblock">
               <div className="fieldlabel">Min Check</div>
@@ -454,9 +471,11 @@ function InvestorSlideout({
 
 export function AdminInvestorsTable({
   investors,
+  allTags,
   initialSelectedInvestorId,
 }: {
   investors: AdminInvestorRow[];
+  allTags: Tag[];
   initialSelectedInvestorId?: string | null;
 }) {
   const router = useRouter();
@@ -676,6 +695,9 @@ export function AdminInvestorsTable({
                     <div className="cellname">{investor.fullName || investor.email}</div>
                     <div className="alignrow aligncenter" style={{ gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
                       <InvestorStatusBadge investor={investor} />
+                      {investor.tags.map((tag) => (
+                        <LpTagBadge key={tag.id} tag={tag} />
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -716,12 +738,14 @@ export function AdminInvestorsTable({
       {selectedInvestor ? (
         <InvestorSlideout
           investor={selectedInvestor}
+          allTags={allTags}
           onClose={closeInvestorSlideout}
           onSaved={() => {
             setSelectedInvestorId(null);
             router.replace('/admin/investors', { scroll: false });
             router.refresh();
           }}
+          onTagsChanged={() => router.refresh()}
         />
       ) : null}
     </>

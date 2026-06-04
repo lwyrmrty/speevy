@@ -11,6 +11,7 @@ import {
 } from '@/components/webflow/admin-investors-status-filter';
 import { CopyInvestorInviteLinkButton } from '@/components/webflow/copy-investor-invite-link-button';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
+import { getTagsForLpIds, listTags } from '@/lib/lp-tags';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export const metadata: Metadata = {
@@ -173,6 +174,10 @@ export default async function AdminInvestorsPage({
       ] as const),
     ),
   );
+  const [allTags, tagsByLp] = await Promise.all([
+    listTags(supabase),
+    getTagsForLpIds(supabase, investorIds),
+  ]);
   const rows: AdminInvestorRow[] = investors.map((investor) => ({
     id: investor.id,
     email: investor.email,
@@ -193,6 +198,7 @@ export default async function AdminInvestorsPage({
       amountCents: interest.amountCents,
       logoUrl: interest.logoStorageKey ? logoUrls.get(interest.logoStorageKey) ?? null : null,
     })),
+    tags: tagsByLp.get(investor.id) ?? [],
   }));
 
   return (
@@ -207,7 +213,7 @@ export default async function AdminInvestorsPage({
                 <CopyInvestorInviteLinkButton />
               </div>
             </div>
-            <AdminInvestorsTable investors={rows} initialSelectedInvestorId={initialSelectedInvestorId ?? null} />
+            <AdminInvestorsTable investors={rows} allTags={allTags} initialSelectedInvestorId={initialSelectedInvestorId ?? null} />
             <AdminInvestorsFallbackScript />
           </div>
         </div>

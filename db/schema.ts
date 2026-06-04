@@ -24,7 +24,7 @@ import {
   index,
   primaryKey,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 // ---------------------------------------------------------------------------
 // Reference to Supabase's auth.users table.
@@ -118,6 +118,11 @@ export const auditAction = pgEnum('audit_action', [
   'nda_template.created',
   'nda_template.updated',
   'nda_template.archived',
+  'tag.created',
+  'tag.updated',
+  'tag.deleted',
+  'lp.tag_added',
+  'lp.tag_removed',
   'auth.login',
   'auth.logout',
 ]);
@@ -195,6 +200,38 @@ export const lpDocuments = pgTable('lp_documents', {
   uploadedAt: timestamp('uploaded_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   lpIdx: index('lp_documents_lp_idx').on(t.lpId),
+}));
+
+// ---------------------------------------------------------------------------
+// tags — freely creatable, admin-managed labels applied to LPs.
+// Internal admin metadata only (LPs never read it, like internal_notes).
+// `color` is one of the Untitled UI Badge palette names; defaults to 'gray'.
+// Names are unique case-insensitively (enforced by a lower(name) unique index).
+// ---------------------------------------------------------------------------
+export const tags = pgTable('tags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  color: text('color').notNull().default('gray'),
+  createdByProfileId: uuid('created_by_profile_id').notNull().references(() => profiles.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nameLowerIdx: uniqueIndex('tags_name_lower_idx').on(sql`lower(${t.name})`),
+}));
+
+// ---------------------------------------------------------------------------
+// lp_tags — many-to-many join between lps and tags.
+// Composite PK (lp_id, tag_id) guarantees one assignment per pair, mirroring
+// the opportunity_access join-table convention.
+// ---------------------------------------------------------------------------
+export const lpTags = pgTable('lp_tags', {
+  lpId: uuid('lp_id').notNull().references(() => lps.id, { onDelete: 'cascade' }),
+  tagId: uuid('tag_id').notNull().references(() => tags.id, { onDelete: 'cascade' }),
+  assignedByProfileId: uuid('assigned_by_profile_id').notNull().references(() => profiles.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.lpId, t.tagId] }),
+  tagIdx: index('lp_tags_tag_idx').on(t.tagId),
 }));
 
 // ---------------------------------------------------------------------------
@@ -509,11 +546,23 @@ export const lpsRelations = relations(lps, ({ one, many }) => ({
   interests: many(interests),
   ndas: many(opportunityNdas),
   accountNda: one(accountNdas, { fields: [lps.id], references: [accountNdas.lpId] }),
+  tags: many(lpTags),
 }));
 
 export const accountNdasRelations = relations(accountNdas, ({ one }) => ({
   lp: one(lps, { fields: [accountNdas.lpId], references: [lps.id] }),
   ndaTemplate: one(ndaTemplates, { fields: [accountNdas.ndaTemplateId], references: [ndaTemplates.id] }),
+}));
+
+export const tagsRelations = relations(tags, ({ one, many }) => ({
+  createdBy: one(profiles, { fields: [tags.createdByProfileId], references: [profiles.id] }),
+  lps: many(lpTags),
+}));
+
+export const lpTagsRelations = relations(lpTags, ({ one }) => ({
+  lp: one(lps, { fields: [lpTags.lpId], references: [lps.id] }),
+  tag: one(tags, { fields: [lpTags.tagId], references: [tags.id] }),
+  assignedBy: one(profiles, { fields: [lpTags.assignedByProfileId], references: [profiles.id] }),
 }));
 
 export const opportunitiesRelations = relations(opportunities, ({ one, many }) => ({

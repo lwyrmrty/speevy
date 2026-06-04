@@ -347,12 +347,6 @@ export async function saveOpportunityInterest(
   }
 
   const supabase = createSupabaseAdminClient();
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .maybeSingle();
-  const isAdmin = profile?.role === 'admin';
   const { data: lp } = await supabase
     .from('lps')
     .select('id, status, email, full_name')
@@ -365,30 +359,16 @@ export async function saveOpportunityInterest(
 
   const { data: opportunity } = await supabase
     .from('opportunities')
-    .select('id, slug, title, status, published_at, visible_to_all_approved_lps')
+    .select('id, slug, title, status')
     .eq('id', parsed.data.opportunityId)
     .maybeSingle();
 
+  // Insider visibility model: an approved LP (enforced above) can indicate
+  // interest on any non-draft opportunity without a per-opportunity grant or
+  // the visible_to_all flag — this mirrors the SELECT/visibility policy.
+  // Drafts never accept interest.
   if (!opportunity || !SHAREABLE_STATUSES.includes(opportunity.status)) {
     return { status: 'error', message: 'This opportunity is not currently accepting interest.' };
-  }
-
-  if (!isAdmin && opportunity.published_at === null) {
-    return { status: 'error', message: 'This opportunity is not currently accepting interest.' };
-  }
-
-  if (!isAdmin && !opportunity.visible_to_all_approved_lps) {
-    const { data: access } = await supabase
-      .from('opportunity_access')
-      .select('opportunity_id')
-      .eq('opportunity_id', opportunity.id)
-      .eq('lp_id', lp.id)
-      .is('revoked_at', null)
-      .maybeSingle();
-
-    if (!access) {
-      return { status: 'error', message: 'This opportunity is not currently accepting interest.' };
-    }
   }
 
   if (['active', 'potential'].includes(opportunity.status)) {

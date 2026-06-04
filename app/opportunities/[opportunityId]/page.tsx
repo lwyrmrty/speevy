@@ -563,7 +563,7 @@ export default async function OpportunityPreviewPage({
   // before deciding how to authorize the viewer.
   const { data: gate } = await supabase
     .from('opportunities')
-    .select('id, slug, title, teaser, status, password_protected, published_at')
+    .select('id, slug, title, teaser, status, password_protected')
     .eq('slug', opportunityId)
     .is('archived_at', null)
     .maybeSingle();
@@ -572,7 +572,9 @@ export default async function OpportunityPreviewPage({
     notFound();
   }
 
-  const isShareable = gate.published_at !== null && SHAREABLE_STATUSES.includes(gate.status);
+  // status is the single source of truth for "not in Draft"; published_at no
+  // longer gates visibility. A draft is never shareable (admin-only).
+  const isShareable = SHAREABLE_STATUSES.includes(gate.status);
 
   // Resolve the outsider access cookie for password-protected opportunities.
   let guestEmail: string | null = null;

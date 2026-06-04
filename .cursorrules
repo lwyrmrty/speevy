@@ -129,10 +129,22 @@ If opportunity has `minimum_investment_cents`, amount must meet or exceed it.
 Interest is one row per LP per opportunity, transitioning through statuses.
 
 ## Access Control
-- LPs see only opportunities where they have an `opportunity_access` row
-  OR the opportunity is flagged `visible_to_all_approved_lps`.
+- Approved LPs are "insiders": an LP with `lps.status = 'approved'` can view
+  EVERY opportunity whose `status <> 'draft'` (potential/active/past) — no
+  per-opportunity `opportunity_access` grant or `visible_to_all_approved_lps`
+  flag required. `status = 'draft'` is the single hide signal; `published_at`
+  no longer gates visibility (it is still maintained but is not consulted).
+- Per-opportunity `opportunity_access` grants are for outsiders / shared-link /
+  password-gate access and remain enforced as an ADDITIONAL allow path. A
+  non-revoked grant lets a non-approved LP (or anyone) see that one specific
+  opportunity, even a draft.
+- `visible_to_all_approved_lps` is now redundant for insiders (all approved LPs
+  already see all non-draft opportunities) and is no longer used by the RLS
+  policies.
 - LPs see opportunity sections (the body) only if they've satisfied the
-  NDA gate when `nda_required = true`.
+  NDA gate when `nda_required = true`. The NDA gate lives on
+  `opportunity_sections`, which mirrors the opportunity-row visibility check
+  (RLS does not cascade across joins).
 - LPs can see title and teaser of an NDA-gated opportunity before signing
   (so they know what they're being asked to sign for). RLS enforces this
   by gating sections, not the opportunity row itself.

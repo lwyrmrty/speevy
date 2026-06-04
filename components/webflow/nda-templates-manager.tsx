@@ -6,6 +6,7 @@ import { useState, useTransition } from 'react';
 import {
   archiveNdaTemplate,
   createNdaTemplate,
+  setAccountDefaultNdaTemplate,
   type NdaTemplateSummary,
 } from '@/app/admin/nda-templates/actions';
 
@@ -50,6 +51,20 @@ export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
     setMessage(null);
     startTransition(async () => {
       const result = await archiveNdaTemplate({ id });
+
+      if (result.status === 'success') {
+        setMessage({ kind: 'success', text: result.message });
+        router.refresh();
+      } else {
+        setMessage({ kind: 'error', text: result.message });
+      }
+    });
+  };
+
+  const handleSetAccountDefault = (id: string) => {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await setAccountDefaultNdaTemplate({ id });
 
       if (result.status === 'success') {
         setMessage({ kind: 'success', text: result.message });
@@ -126,6 +141,9 @@ export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
           <div className="tablecell">
             <div>Version</div>
           </div>
+          <div className="tablecell">
+            <div>Account default</div>
+          </div>
           <div className="tablecell actions">
             <div>Actions</div>
           </div>
@@ -147,6 +165,21 @@ export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
               <div className="tablecell">
                 <div>v{template.version}</div>
               </div>
+              <div className="tablecell">
+                {template.isAccountDefault ? (
+                  <div className="cellstatus">Account default</div>
+                ) : (
+                  <button
+                    type="button"
+                    className="actionlinks w-inline-block"
+                    onClick={() => handleSetAccountDefault(template.id)}
+                    disabled={isPending}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    <div>Set as account default</div>
+                  </button>
+                )}
+              </div>
               <div className="tablecell actions">
                 <button
                   type="button"
@@ -164,6 +197,9 @@ export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
           <div className="tablerow">
             <div className="tablecell first">
               <div>No NDA documents yet. Add one above.</div>
+            </div>
+            <div className="tablecell">
+              <div>-</div>
             </div>
             <div className="tablecell">
               <div>-</div>

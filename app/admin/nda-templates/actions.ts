@@ -25,6 +25,10 @@ const archiveNdaTemplateSchema = z.object({
   id: z.string().uuid(),
 });
 
+const setAccountDefaultNdaTemplateSchema = z.object({
+  id: z.string().uuid(),
+});
+
 export type NdaTemplateSummary = {
   id: string;
   name: string;
@@ -32,6 +36,7 @@ export type NdaTemplateSummary = {
   signatureProvider: string;
   sourceFileUrl: string;
   version: number;
+  isAccountDefault: boolean;
   archivedAt: string | null;
   createdAt: string;
 };
@@ -78,7 +83,9 @@ export async function listNdaTemplates(
   const supabase = createSupabaseAdminClient();
   let query = supabase
     .from('nda_templates')
-    .select('id, name, description, signature_provider, source_file_url, version, archived_at, created_at')
+    .select(
+      'id, name, description, signature_provider, source_file_url, version, is_account_default, archived_at, created_at',
+    )
     .order('created_at', { ascending: false });
 
   if (!includeArchived) {
@@ -94,6 +101,7 @@ export async function listNdaTemplates(
     signatureProvider: row.signature_provider,
     sourceFileUrl: row.source_file_url,
     version: row.version,
+    isAccountDefault: row.is_account_default,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
   }));
@@ -239,4 +247,78 @@ export async function archiveNdaTemplate(
 
   revalidatePath('/admin/nda-templates');
   return { status: 'success', message: 'NDA template archived.', templateId: parsed.data.id };
+}
+
+/**
+ * Designate which (active) NDA template is THE standard account-level default.
+ * Clears any existing default first, then sets the chosen one, so the partial
+ * unique index (one active is_account_default = true) is never violated.
+ * Admin-only; Zod-validated; writes an audit_log row. See docs §4B.3 / §4B.6.
+ */
+export async function setAccountDefaultNdaTemplate(
+  payload: z.input<typeof setAccountDefaultNdaTemplateSchema>,
+): Promise<NdaTemplateActionResult> {
+  const auth = await ensureAdmin();
+  if (!auth.ok) {
+    return { status: 'error', message: auth.message };
+  }
+
+  const parsed = setAccountDefaultNdaTemplateSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { status: 'error', message: 'Select a valid NDA template to set as the account default.' };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const now = new Date().toISOString();
+
+  const { data: template } = await supabase
+    .from('nda_templates')
+    .select('id, name, archived_at')
+    .eq('id', parsed.data.id)
+    .maybeSingle();
+
+  if (!template) {
+    return { status: 'error', message: 'That NDA template could not be found.' };
+  }
+  if (template.archived_at) {
+    return { status: 'error', message: 'Archived templates cannot be set as the account default.' };
+  }
+
+  // Clear the current active default(s) before setting the new one so the
+  // partial unique index never sees two active defaults mid-update.
+  const { error: clearError } = await supabase
+    .from('nda_templates')
+    .update({ is_account_default: false, updated_at: now })
+    .eq('is_account_default', true)
+    .is('archived_at', null)
+    .neq('id', parsed.data.id);
+
+  if (clearError) {
+    return { status: 'error', message: clearError.message };
+  }
+
+  const { error } = await supabase
+    .from('nda_templates')
+    .update({ is_account_default: true, updated_at: now })
+    .eq('id', parsed.data.id);
+
+  if (error) {
+    return { status: 'error', message: error.message };
+  }
+
+  await supabase.from('audit_log').insert({
+    actor_profile_id: auth.userId,
+    actor_role: 'admin',
+    action: 'nda_template.updated',
+    entity_type: 'nda_template',
+    entity_id: parsed.data.id,
+    metadata: { name: template.name, is_account_default: true },
+  });
+
+  revalidatePath('/admin/nda-templates');
+  return {
+    status: 'success',
+    message: 'Account default NDA template updated.',
+    templateId: parsed.data.id,
+  };
 }

@@ -36,6 +36,7 @@
     "react-dom": "latest",
     "react-stately": "^3.47.0",
     "shadcn": "^4.8.2",
+    "standardwebhooks": "^1.0.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
     "tailwindcss-react-aria-components": "^2.1.1",

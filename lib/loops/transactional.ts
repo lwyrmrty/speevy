@@ -49,6 +49,7 @@ type SendLpApprovedEmailParams = {
 
 type SendNdaSignedCopyEmailParams = {
   email: string;
+  firstName: string;
   ndaName: string;
   signedAt: string;
   // Tokenized Speevy download link (re-issues a fresh signed Storage URL on each
@@ -372,6 +373,7 @@ export async function sendLpApprovedEmail({
 // URL on each click). The recipient is the signer's own address; do not log it.
 export async function sendNdaSignedCopyEmail({
   email,
+  firstName,
   ndaName,
   signedAt,
   downloadUrl,
@@ -395,6 +397,7 @@ export async function sendNdaSignedCopyEmail({
       transactionalId,
       email,
       dataVariables: {
+        firstName,
         ndaName,
         signedAt,
         downloadUrl,

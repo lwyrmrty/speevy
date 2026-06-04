@@ -384,10 +384,13 @@ async function sendSignedCopyEmailSafe(args: {
   try {
     const { data: lp } = await supabase
       .from('lps')
-      .select('email')
+      .select('email, full_name')
       .eq('id', lpId)
       .maybeSingle();
     if (!lp?.email) return;
+
+    // First token of the trimmed full name; empty when no name is on file.
+    const firstName = (lp.full_name ?? '').trim().split(/\s+/)[0] ?? '';
 
     // A human-friendly NDA label without leaking anything sensitive.
     let ndaName = 'Your NDA';
@@ -419,6 +422,7 @@ async function sendSignedCopyEmailSafe(args: {
 
     await sendNdaSignedCopyEmail({
       email: lp.email,
+      firstName,
       ndaName,
       signedAt: new Date().toISOString(),
       downloadUrl,

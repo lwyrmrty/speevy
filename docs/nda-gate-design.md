@@ -4,6 +4,17 @@
 > changed by this doc.
 > Scope: gating an opportunity's **section body** behind a completed NDA.
 >
+> **Step 1+2 are BUILT & in production** (migrations `0013`/`0014`): the
+> `nda_templates` catalog, admin management UI, the NDA dropdown in the
+> opportunity editor persisting `opportunities.nda_template_id` (now a `uuid` FK
+> to `nda_templates`), a server-only SignatureAPI client/env, and the
+> per-opportunity gate (`opportunities.nda_required` + `nda_template_id` +
+> `opportunity_ndas`, RLS-gated on a signed `opportunity_ndas` row). The
+> insider/outsider visibility model also shipped via migration `0012` — but
+> **status-based**, not the `lp_audience` column §4A proposed (see the §4A
+> reconciliation note). **§4B below is the next design increment** and is the
+> authoritative spec for the expanded NDA model.
+>
 > **Decisions taken by the user (v1):**
 > 1. **Signing engine = SignatureAPI (committed).** `signature_provider` stays
 >    pluggable in the schema, but v1 ships `'signatureapi'` only. (The column
@@ -20,12 +31,24 @@
 >    **non-breaking**: the unlock keys off the **all-signers / `envelope.completed`**
 >    event (SignatureAPI's `recipients` array, parallel or sequential), not a
 >    single signer's completion.
-> 3. **Access model redesign = PROPOSED, pending the user's internal
->    confirmation.** Replace the password-protected-page mechanism with an
->    **insider/outsider** investor classification + **per-opportunity audience**,
->    and make a signed NDA a **universal** precondition for viewing any
->    opportunity body. See the new **§4A. Access Model Redesign**. Everything in
->    §4A is marked proposed until the user confirms.
+> 3. **Access model redesign (§4A) = PARTIALLY SUPERSEDED.** The team shipped a
+>    *status-based* insider/outsider model (migration `0012`: insider =
+>    `lps.status = 'approved'` sees all non-draft opportunities; the
+>    `opportunity_access` grant path is kept for outsider / password / shared-link
+>    users) and **chose to KEEP the password/outsider mechanism**, not remove it.
+>    §4A's `lp_audience` column and "delete the password flow" recommendations
+>    are therefore not the current direction — see the reconciliation note atop
+>    §4A.
+> 4. **Account-level NDA = the new design (§4B), as an INFORMATIONAL status.** A
+>    single **account-level NDA** is surfaced once per investor (insiders *and*
+>    outsiders), signed once, and stored as a **tracked NDA status + badge** on
+>    the investor. Per the user's locked scope, it is **manual/informational and
+>    does NOT automatically gate viewing or login.** The **only automatic NDA
+>    gate remains the per-opportunity NDA** (`opportunities.nda_required` +
+>    `opportunity_ndas` + the existing RLS section gate). Plus: store every
+>    signed NDA, surface them in the admin investor profile drawer, and email the
+>    signer a copy. A future option to promote the account NDA to a hard gate is
+>    preserved under §4B.9. See **§4B**.
 
 ---
 
@@ -392,13 +415,36 @@ via §4A).
 
 ---
 
-## 4A. Access Model Redesign — Insider/Outsider + Universal NDA *(Proposed, pending user confirmation)*
+## 4A. Access Model Redesign — Insider/Outsider + Universal NDA *(Partially superseded — see note)*
 
-> **Status: PROPOSED.** The user is strongly considering this but is still
-> confirming it internally. Everything in §4A is a recommendation, not a decided
-> spec. It is, however, the recommended direction because it makes the
-> universal-NDA rule enforceable in **one** place and eliminates the
-> service-role bypass (§4.2).
+> **⚠️ RECONCILIATION (read first).** §4A was the original proposal. The shipped
+> reality and the newer direction diverge from it on two points:
+>
+> 1. **Insider/outsider is status-based, not a new `lp_audience` column.**
+>    Migration `0012` made **insider = `lps.status = 'approved'`** (an approved
+>    LP sees every non-draft opportunity with no per-deal grant), and kept the
+>    **`opportunity_access`** grant path as the additive allow-path for
+>    outsiders / shared-link / password users. So §4A.2's `lp_audience` enum and
+>    §4A.3's `opportunity_audience` enum were **not** adopted; the admin UI
+>    derives a display `kind: 'insider' | 'outsider'` from status (the
+>    `'outsider'` lifecycle value), not from a dedicated audience column.
+> 2. **The password/outsider mechanism is KEPT, not removed.** The user now
+>    explicitly wants to retain the outsider/password path and **attach the
+>    account-level NDA to it** (§4B.5). So §4A.6's "delete the password
+>    mechanism + guest bypass" and §4A.8's destructive migration are **not** the
+>    current plan. The guest service-role read on the detail page (§4.2) still
+>    needs an **app-layer NDA check** (it is no longer dissolved by removing
+>    guests).
+> 3. **"Universal NDA" is dropped, not relocated.** §4A.4 proposed making the
+>    *per-opportunity* NDA always-on. That is **not** done. The per-opportunity
+>    NDA stays an **optional** `nda_required` toggle (the only automatic gate),
+>    and the **account-level NDA (§4B) is an informational status, not a gate.**
+>    Do **not** add an account-NDA clause to `opportunity_sections` RLS at this
+>    time (a future hard-gate option is preserved under §4B.9).
+>
+> The rest of §4A is retained for context (audience-vs-lifecycle reasoning,
+> admin-preview, teaser-stays-visible) but defer to **§4B** wherever they
+> conflict.
 
 ### 4A.1 The proposed model in one paragraph
 
@@ -702,6 +748,425 @@ visibility/NDA, not those invariants.
    opportunities by default, or only those explicitly allowlisted via
    `opportunity_access`? (Ties to §4A.3; recommend audience-by-default with
    optional allowlist.)
+
+---
+
+## 4B. Account-Level NDA + Per-Opportunity NDA *(the confirmed design)*
+
+> **Status: CONFIRMED.** Builds directly on the shipped Step 1+2
+> (per-opportunity NDA + `nda_templates` catalog + SignatureAPI engine).
+>
+> **Scope decision (locked by the user): the account-level NDA is an
+> INFORMATIONAL / MANUAL status only — it is NOT an automatic viewing gate.**
+> The only **automatic** NDA gate remains the existing **per-opportunity** gate
+> (`opportunities.nda_required` + `opportunity_ndas` + the RLS section gate
+> already built). The account NDA is captured, stored, badged, and emailed, but
+> it does **not** participate in RLS or the body-view check at this time. A
+> hard-gate "two-tier RLS" design is preserved under **§4B.9 (Deferred /
+> Future)** in case the user later promotes the account NDA to a real gate.
+
+### 4B.1 The model in one paragraph
+
+There are two NDAs, with different roles:
+
+- **Account-level NDA ("the standard NDA") — tracked status, no automatic gate.**
+  One NDA, tied to the **investor account**, surfaced **once** (after signup for
+  insiders; after the password flow for outsiders), signed **once**, and
+  **never re-signed**. Its result is stored as an NDA status on the investor
+  (derived from the `account_ndas` row) and shown as a badge. It is
+  **informational/manual**: admins use it to decide when to approve, but
+  **nothing automatically blocks viewing or login on it.**
+- **Per-opportunity NDA (existing, optional) — the only automatic gate.** When
+  an opportunity's **Require NDA** box is checked
+  (`opportunities.nda_required = true`), that specific opportunity needs an NDA,
+  enforced by the **already-built** `opportunity_ndas` + RLS section gate. This
+  is unchanged from Step 1+2.
+
+The two are independent documents (different `nda_templates` rows, separate
+envelopes, separate signature records).
+
+### 4B.2 Decision logic — "can this LP view this opportunity body?"
+
+**Automatic enforcement (what RLS / the app actually checks) — unchanged from
+Step 1+2:**
+
+```
+canViewBody(lp, opp) =
+      isVisible(lp, opp)                      -- existing 0012 visibility:
+                                              --   approved insider + non-draft,
+                                              --   OR opportunity_access grant
+  AND ( opp.nda_required = false              -- per-opportunity NDA only if required
+        OR opportunityNdaSigned(lp, opp) )
+```
+
+The **account-level NDA is intentionally NOT in this expression.** It is tracked
+and badged but does not gate viewing.
+
+As a table (assume visibility already satisfied; title/teaser are always visible
+regardless — RLS gates *sections*, not the row):
+
+| `opp.nda_required` | Per-opp NDA | Body visible? | Account NDA |
+|---|---|---|---|
+| `false` | n/a | **Yes** | irrelevant to the gate (tracked only) |
+| `true` | ✗ signed | **No** — blocked at the per-opportunity gate | irrelevant to the gate |
+| `true` | ✓ signed | **Yes** | irrelevant to the gate |
+
+```mermaid
+stateDiagram-v2
+    [*] --> Visible
+    Visible --> BodyVisible: opp.nda_required = false
+    Visible --> NeedsOppNda: opp.nda_required = true
+    NeedsOppNda --> BodyVisible: per-opportunity envelope.completed
+    BodyVisible --> [*]
+    note right of Visible
+        Account-level NDA status is tracked separately
+        (badge + stored PDF + email) and does NOT
+        affect this gate. See §4B.9 to promote it later.
+    end note
+```
+
+### 4B.3 Data model — where the account-level signature lives
+
+**Recommendation: a dedicated `account_ndas` table** (one row per LP), parallel
+to `opportunity_ndas`. Justification vs the alternatives:
+
+- **Reuse `opportunity_ndas` with a nullable `opportunity_id`** — rejected. The
+  table is `NOT NULL opportunity_id` with `unique(opportunity_id, lp_id)` and a
+  FK cascade; making `opportunity_id` nullable weakens that contract and forces
+  every per-opportunity query to filter out account rows. Two clean tables beat
+  one overloaded one.
+- **Reuse `lp_documents` (`type = 'nda'`)** — rejected as the *source of truth*.
+  `lp_documents` stores only `{type, label, storage_key}` — no envelope id, no
+  signature lifecycle/status, no provider. It cannot be the gate's authoritative
+  record. (We *may* additionally write an `lp_documents` row on completion so the
+  signed NDA also appears in any generic "documents" list — optional, §4B.7.)
+- **Dedicated `account_ndas`** — chosen. Mirrors `opportunity_ndas` exactly (so
+  the webhook/storage/email code is shared), gives a clean `unique(lp_id)` "one
+  account NDA per investor," and references the `nda_templates` row that was
+  signed so historical signatures stay attributable across template versions.
+
+```
+account_ndas (
+  id uuid pk default gen_random_uuid(),
+  lp_id uuid not null unique references lps(id) on delete cascade,
+  nda_template_id uuid not null references nda_templates(id),  -- which standard NDA was signed
+  signature_provider text not null default 'signatureapi',     -- pluggable, mirrors opportunity_ndas
+  envelope_id text not null unique,
+  status signature_status not null default 'sent',             -- reuse existing enum
+  sent_at timestamptz not null default now(),
+  signed_at timestamptz,
+  declined_at timestamptz,
+  expired_at timestamptz,
+  signed_document_storage_key text,                            -- sealed PDF in private Storage
+  last_webhook_event_id text,                                  -- idempotency
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+)
+```
+
+- `unique(lp_id)` enforces the "signed once, never re-signed" rule structurally.
+- Soft-disable / lifecycle via the `signature_status` enum + `*_at` timestamps
+  (consistent with conventions; no `is_deleted`).
+- Writes are **service-role only** (webhook + onboarding action), exactly like
+  `opportunity_ndas`; RLS allows admin read + LP read-own.
+
+#### Designating THE standard account NDA in the catalog
+
+The admin must mark **which `nda_templates` row is the account-level default.**
+**Recommendation: a boolean flag `nda_templates.is_account_default`** with a
+**partial unique index** so at most one active row is the default:
+
+```
+alter table public.nda_templates
+  add column is_account_default boolean not null default false;
+
+create unique index nda_templates_one_account_default
+  on public.nda_templates (is_account_default)
+  where is_account_default = true and archived_at is null;
+```
+
+- The onboarding/outsider flows resolve "the standard NDA" by selecting the
+  active `is_account_default = true` row. If none is set, the account-NDA step is
+  simply skipped and the admin sees a setup warning. (Because the account NDA is
+  informational only and does not gate viewing, a missing default never blocks an
+  LP — it just means no account NDA is captured yet.)
+- Open question (flagged, §11): **one standard NDA for everyone vs different for
+  insiders vs outsiders.** A single boolean covers "one for all." If we later
+  need distinct insider/outsider account NDAs, replace the boolean with a small
+  role column (e.g. `account_default_for text check in ('all','insider','outsider')`)
+  or a settings table — non-breaking because `account_ndas.nda_template_id`
+  already records exactly which template each LP signed.
+
+#### Account-NDA status: derived, not denormalized (recommended)
+
+The "NDA Signed / NDA Pending" indicator (§4B.6) is **derived**:
+`exists(account_ndas where lp_id = … and status = 'signed')`. No new column on
+`lps` is required, which avoids drift. If the investors table query cost ever
+matters, add a cached `lps.account_nda_status signature_status` updated by the
+webhook in the same transaction — but start derived.
+
+### 4B.4 RLS — UNCHANGED (account NDA is not in the gate)
+
+**No RLS change is made for the account-level NDA.** Per the locked scope
+decision, the account NDA is informational/manual and does **not** gate viewing.
+The `opportunity_sections` body policy stays exactly as shipped in migration
+`0012` (visibility + the optional per-opportunity NDA branch). Do **not** add an
+account-NDA clause to RLS at this time.
+
+The per-opportunity gate and its outsider/service-role app-layer handling are
+unchanged from Step 1+2. (If/when the account NDA is promoted to a hard gate,
+the helper + policy + the outsider app-layer check live in **§4B.9**.)
+
+### 4B.5 Onboarding / approval flow *(confirmed)*
+
+#### Insider path (join form → pending lead → push account NDA → manual approve)
+
+> **✅ Confirmed — signup is UNCHANGED from today (Option A).**
+> `submitInvestorRequest` (the join form) creates a lightweight **pending `lps`
+> lead row** (`status = 'pending_review'`) and notifies admins — **no auth user,
+> no login** at this point. This is exactly today's behavior.
+> **(Option B — minting an auth user at form completion — is REJECTED.)**
+> The **new** piece is a separate **account-NDA step after signup**, hosted on a
+> tokenized onboarding page (`/onboarding/nda?token=…`, signed/single-use) that
+> the LP reaches right after the form, since they have no auth session yet.
+
+**Confirmed rules:**
+
+- **No automatic NDA→approval logic.** Approval is a **manual admin action** and
+  is **never hard-blocked** by the account NDA. Admins will typically wait for
+  the "NDA Signed" badge before approving, but nothing enforces it.
+- **Approval is the only login gate.** Until `status = 'approved'` an investor
+  **cannot log in**; once approved they **can log in even if the account NDA is
+  not signed**. The account NDA does not affect login.
+- **NDA-signed status is derived** from the `account_ndas` row (§4B.3) and shown
+  as a badge (§4B.6) — there is no enforcement column.
+
+```mermaid
+sequenceDiagram
+    actor LP as Prospective Insider
+    participant Form as Join Form (submitInvestorRequest)
+    participant DB as Postgres
+    participant Onb as /onboarding/nda?token=… (tokenized page)
+    participant SA as Server Actions
+    participant SAPI as SignatureAPI
+    participant WH as /api/webhooks/signatureapi
+    participant Loops
+    actor Admin
+
+    LP->>Form: Complete join form (name, email, sectors, …)
+    Form->>DB: upsert lps (status='pending_review', no auth user)  [service role]
+    Form->>Loops: admin "new access request" + LP "signup received" (existing)
+    Form-->>LP: redirect to tokenized onboarding NDA page
+    LP->>Onb: open account-NDA step
+    Onb->>SA: createAccountNdaEnvelope(lp via token)
+    SA->>DB: resolve nda_templates where is_account_default
+    SA->>SAPI: create envelope (account default source, recipient=LP email,<br/>delivery_type:none, embeddable_in: Speevy, metadata:{lp_id, kind:'account'})
+    SAPI-->>SA: envelope id + ceremony URL
+    SA->>DB: insert account_ndas (status='sent', envelope_id)  [service role]
+    SA->>DB: audit_log 'nda.sent' (metadata kind='account')
+    SA-->>Onb: embedded ceremony URL
+    LP->>SAPI: Sign the standard NDA
+    SAPI->>WH: envelope.completed (Standard Webhooks HMAC, metadata kind='account')
+    WH->>DB: account_ndas status='signed' + audit 'nda.signed' (same txn)
+    SAPI->>WH: deliverable.generated
+    WH->>SAPI: GET deliverable -> 1h pre-signed URL
+    WH->>DB: store sealed PDF to Storage (signed_document_storage_key)
+    WH->>Loops: email signed copy to LP (download link)
+    Note over Admin: "NDA Signed" badge now derived from account_ndas (informational)
+    Admin->>DB: approve (status='approved') — separate MANUAL step, NOT blocked by NDA
+    Note over LP: login enabled ONLY after approval (account NDA not required to log in)
+```
+
+- The account NDA is **captured for the record and shown as a badge**, nothing
+  more. It does not gate login or viewing (the per-opportunity gate is the only
+  automatic NDA gate).
+
+#### Outsider (password) path — same account NDA, surfaced once
+
+**The password/outsider mechanism stays.** The outsider passes the password
+gate, supplies email, and verifies a code, after which `findOrCreateOutsiderLp`
+creates an `lps` row (`status = 'outsider'`) and a signed access cookie.
+**New step:** once we have their email + outsider `lp_id`, surface the **same**
+account-level NDA (`is_account_default` template) **once**.
+
+- Same `createAccountNdaEnvelope` action, keyed on the outsider `lp_id` (resolved
+  from the access cookie rather than `auth.uid()`); `envelope_metadata.kind =
+  'account'`.
+- The ceremony embeds on the gated page (the outsider has a cookie session, not
+  auth). On `envelope.completed` the webhook writes `account_ndas` for that
+  `lp_id`, stores the PDF, and emails the copy — identical to the insider path.
+- **Signed once:** `unique(lp_id)` on `account_ndas` plus matching on the same
+  email/`lp_id` means a returning outsider never re-signs.
+- **Informational/manual, like insiders.** The outsider's account NDA is tracked
+  and badged but does **not** add any automatic gate beyond the existing
+  per-opportunity NDA. (Outsiders still rely on `opportunity_access` / the
+  password path for visibility, unchanged.)
+
+### 4B.6 Admin UX deltas (beyond Step 1+2)
+
+- **Investors table badge.** Add an account-NDA indicator next to the existing
+  status/kind badges in `components/webflow/admin-investors-table.tsx`. Extend
+  `AdminInvestorRow` with `accountNdaSigned: boolean` (+ optional `accountNdaSignedAt`),
+  populated by the `/admin/investors` page query (join `account_ndas`). Render a
+  small badge: **"NDA Signed"** (e.g. `cellstatus`) vs **"NDA Pending"** (e.g.
+  `cellstatus draft`). Show it in both the row and the slideout header.
+- **"Signed NDAs" section in the profile drawer.** In `InvestorSlideout`, add a
+  read-only section listing **all** of that investor's executed NDAs:
+  - the **account-level** NDA (from `account_ndas`), and
+  - **each per-opportunity** NDA (from `opportunity_ndas`, labeled with the
+    opportunity title).
+
+  Each row shows the template name/opportunity, signed date, and a **View /
+  Download** action that calls a server action returning a **short-lived signed
+  URL** (or hits a tokenized download route, §4B.8) for the
+  `signed_document_storage_key`. Admin-only; never exposes the raw storage key.
+- **Mark the account-default template.** In the existing admin **NDA Templates**
+  view, add a "Set as account default" control (radio/toggle) that calls a new
+  `setAccountDefaultNdaTemplate(templateId)` action (admin-only; flips
+  `is_account_default`, relying on the partial unique index to keep it singular).
+
+### 4B.7 Webhook / server-action changes (beyond Step 1+2)
+
+**Server actions (new / extended):**
+
+- `createAccountNdaEnvelope(lpRef)` / `getAccountNdaCeremonyUrl(lpRef)` — the
+  account-tier analog of `createOpportunityNdaEnvelope` / `getNdaCeremonyUrl`.
+  Resolves the `is_account_default` template, creates a SignatureAPI envelope with
+  `envelope_metadata = { lp_id, kind: 'account' }`, upserts `account_ndas`
+  (`status='sent'`) + `nda.sent` audit in one txn, returns the ceremony URL.
+  Idempotent: if a non-terminal `account_ndas` row exists, reuse it; if already
+  `signed`, return "already signed."  Caller resolution differs by path: session
+  LP via `current_lp_id()`; outsider via the access cookie's `lp_id`.
+- `setAccountDefaultNdaTemplate(templateId)` — admin-only catalog action (§4B.6).
+- `getAccountNdaStatus()` — poll helper (mirrors §7.4 `getNdaStatus`) for the
+  onboarding/outsider ceremony to flip to "signed."
+- Profile-drawer data: a server action (or page-level query) returning the
+  investor's `account_ndas` + `opportunity_ndas` with freshly signed URLs.
+
+**Webhook (`app/api/webhooks/signatureapi/route.ts`) — branch on `kind`:**
+
+The single SignatureAPI webhook (§6.1) now routes by `envelope_metadata.kind`:
+
+- `kind = 'account'` → upsert **`account_ndas`** for `lp_id`.
+- `kind = 'opportunity'` (or absent, for back-compat) → upsert
+  **`opportunity_ndas`** for `(opportunity_id, lp_id)` — unchanged from Step 1+2.
+
+Everything else is shared: Standard Webhooks HMAC verification, idempotency on
+the event id, `recipient.completed`/`envelope.completed → 'signed'` (keyed on
+the all-signers event so countersignature stays non-breaking), and on
+`deliverable.generated` download the sealed PDF → private Supabase Storage →
+`signed_document_storage_key`. Audit rows reuse `nda.sent`/`nda.signed` with
+`metadata.kind` distinguishing the tier (optionally add `account_nda.sent` /
+`account_nda.signed` enum values if we want first-class audit filtering).
+
+**Email-on-signed (both tiers).** After **any** NDA reaches `signed` and its PDF
+is stored, trigger the Loops "signed NDA copy" email to the signer's email
+(§4B.8). Fire it from the webhook (the source of truth), wrapped in
+`Promise.allSettled` + failure logging like the existing Loops calls, so an email
+failure never blocks the gate flip.
+
+### 4B.8 Email design — Loops "your signed NDA"
+
+The current Loops integration (`lib/loops/transactional.ts`) uses the
+`/transactional` endpoint with **`dataVariables` only** — **no attachments are
+wired today**, and the existing helpers (`sendLpApprovedEmail`, etc.) send only
+template variables.
+
+- **Recommendation: send a short-lived signed download *link*, not an
+  attachment.** Add `sendNdaSignedCopyEmail({ email, ndaName, signedAt,
+  downloadUrl, idempotencyKey })` following the existing helper pattern
+  (`Idempotency-Key` header + `dataVariables`), backed by a new
+  `LOOPS_TEMPLATE_NDA_SIGNED_COPY` env id and a `hasLoops…Env()` guard.
+- **Robust link via a tokenized download route** (recommended over emailing a raw
+  1-hour signed URL that expires before the LP opens it): email a Speevy URL like
+  `/nda/download/[token]` where the token authorizes the specific
+  `account_ndas` / `opportunity_ndas` row; the route validates the token and
+  **re-issues a fresh signed Storage URL** on each click. Keeps links working
+  for a sane window without exposing storage keys or long-lived public URLs.
+- **If Loops attachments are later enabled** (Loops transactional supports a
+  base64 `attachments` array on accounts where it's turned on), we can attach the
+  PDF directly — flagged as an **open question** (confirm Loops plan supports
+  attachments). Until confirmed, the link approach is the default.
+- **PII discipline:** the email goes to the signer's own address; do not log the
+  address or attach contents to analytics (per `.cursorrules`).
+
+### 4B.9 DEFERRED / FUTURE — promoting the account NDA to a hard viewing gate
+
+> **Not built now.** This subsection preserves the original "two-tier hard gate"
+> design in case the user later decides the account-level NDA should become an
+> **automatic precondition** for viewing any opportunity body (i.e. no body
+> visible until the account NDA is signed, in addition to the per-opportunity
+> NDA). It requires **no schema change** beyond what §4B already adds — only an
+> RLS swap + the outsider app-layer check. Until then, the account NDA stays
+> informational (§4B.2/§4B.4).
+
+If promoted, add a `SECURITY DEFINER` helper mirroring `current_lp_id()`:
+
+```sql
+create or replace function public.current_lp_has_account_nda()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists (
+    select 1 from public.account_ndas a
+    join public.lps l on l.id = a.lp_id
+    where l.profile_id = auth.uid()
+      and a.status = 'signed'
+  );
+$$;
+```
+
+…and replace the `opportunity_sections` body policy (migration `0012`) with the
+two-tier version — visibility unchanged, **account NDA always required**, and the
+per-opportunity NDA still only when `nda_required = true`:
+
+```sql
+create policy "opportunity_sections: lp read with two-tier nda gate"
+  on public.opportunity_sections for select
+  using (
+    exists (
+      select 1
+      from public.opportunities o
+      where o.id = opportunity_sections.opportunity_id
+        -- visibility unchanged from 0012 (approved-insider non-draft OR access grant)
+        and (
+          (
+            exists (
+              select 1 from public.lps
+              where lps.profile_id = auth.uid() and lps.status = 'approved'
+            )
+            and o.status <> 'draft'
+          )
+          or exists (
+            select 1 from public.opportunity_access oa
+            where oa.opportunity_id = o.id
+              and oa.lp_id = public.current_lp_id()
+              and oa.revoked_at is null
+          )
+        )
+        -- (FUTURE) account-level NDA required
+        and public.current_lp_has_account_nda()
+        -- per-opportunity NDA only when the deal requires it (unchanged)
+        and (
+          o.nda_required = false
+          or exists (
+            select 1 from public.opportunity_ndas n
+            where n.opportunity_id = o.id
+              and n.lp_id = public.current_lp_id()
+              and n.status = 'signed'
+          )
+        )
+    )
+  );
+```
+
+**Outsider / password-guest caveat (only relevant if promoted).** Outsiders have
+**no auth user** and read via the **service-role client** on the detail page
+(`viewerKind === 'guest'`, §4.2), which bypasses RLS. So this RLS protects
+session LPs (insiders) only; for guests the same account-NDA-signed check would
+have to be enforced **in app code** before the service-role section read, keyed
+on the guest's outsider `lp_id`. (None of this applies while the account NDA is
+informational.)
 
 ---
 
@@ -1205,13 +1670,18 @@ the SignatureAPI engine (Track 1) can ship on today's access model and does not
 > **Gate before Track 1 go-live:** complete the SignatureAPI due-diligence
 > checklist (below). Building against the free test tier can start immediately.
 
-#### Track 1 — SignatureAPI NDA gate (committed; build now)
+#### Track 1 — SignatureAPI NDA gate (committed)
 
-1. **PR 1 — `nda_templates` catalog + admin management.**
+> **PR 1 + PR 2 are SHIPPED** (migrations `0013`/`0014`): the `nda_templates`
+> catalog + admin management and the editor dropdown persisting
+> `opportunities.nda_template_id` are in production. PR 3–5 cover the
+> per-opportunity signing engine end-to-end.
+
+1. **PR 1 — `nda_templates` catalog + admin management.** ✅ *shipped*
    Migration for `nda_templates`; admin actions (`create/update/archive/list`)
    and a minimal admin "NDA Templates" view. Tests: admin-only access; archive
    preserves attribution.
-2. **PR 2 — Editor wiring.**
+2. **PR 2 — Editor wiring.** ✅ *shipped*
    Add the NDA-document dropdown (reads `nda_templates`) + `ndaTemplateId` /
    `ndaProvider` (default `'signatureapi'`) to the editor and `saveOpportunity`
    Zod schema + persisted fields. Tests: save round-trips template ref; reject
@@ -1232,31 +1702,65 @@ the SignatureAPI engine (Track 1) can ship on today's access model and does not
    `OpportunityNdaGate` pending/poll state (with `event_delivery=message` cue),
    blocked-body empty state, watermark note.
 
-#### Track 2 — Access-model redesign (PROPOSED; build only after user confirms §4A)
+#### Track 1B — Account-level NDA (informational status, §4B; build on Step 1+2)
 
-6. **PR 6 — Add audience model (additive).**
-   `lp_audience` + `opportunity_audience` enums, `lps.audience`,
-   `opportunities.audience`, `current_lp_audience()`; backfill per §4A.8 step 1.
-   No behavior change yet. Tests: backfill correctness; helper returns audience.
-7. **PR 7 — Swap RLS + make NDA universal.**
-   Replace the `opportunities`/`opportunity_sections` policies with the §4A.5
-   audience + universal-NDA policies; default `nda_required = true` and drop the
-   editor toggle. Tests: audience-match visibility, body always NDA-gated,
-   title/teaser still visible pre-NDA.
-8. **PR 8 — Remove the guest path + service-role bypass; add admin preview.**
-   Repoint the detail page so all non-admin reads use the RLS-bound session
-   client; add the labeled admin-preview path (§4A.7). Tests: no anonymous body
-   access; admin preview flagged + unaudited as LP view.
-9. **PR 9 — Delete password mechanism.**
-   Remove `OpportunityPasswordGate`, `unlockOpportunity`, the
-   `lib/opportunity-access.ts` cookie machinery, `lib/opportunity-password.ts`;
-   final migration drops `password_protected` + `opportunity_access_passwords`
-   and retires the `outsider` status value (§4A.6/§4A.8). Tests: routes/actions
-   gone; no regressions.
+Each PR is sized to be reviewable on its own. This track assumes the
+per-opportunity engine (Track 1) exists; the account tier reuses its
+webhook/storage/email plumbing. **The account NDA is captured/badged/emailed —
+it is NOT wired into RLS or the body-view gate** (that hard-gate option is
+deferred to §4B.9, not in this plan).
+
+6. **PR 6 — `account_ndas` table + account-default flag.**
+   Migration: `account_ndas` (§4B.3) and `nda_templates.is_account_default` +
+   partial unique index. Drizzle schema additions. No behavior yet. Tests:
+   `unique(lp_id)`; only one active account default.
+7. **PR 7 — Account-NDA engine + post-signup ceremony (Option A).**
+   `createAccountNdaEnvelope` / `getAccountNdaCeremonyUrl` / `getAccountNdaStatus`
+   actions; webhook `kind='account'` branch writing `account_ndas` + storing the
+   sealed PDF; wire the **insider** path — signup stays unchanged (pending `lps`
+   lead, no auth user), then redirect to the tokenized `/onboarding/nda` page
+   hosting the embedded ceremony. No approval/login coupling. Tests:
+   envelope→signed flips `account_ndas`; idempotency; deliverable stored;
+   approval + login unaffected by NDA state.
+8. **PR 8 — Outsider account-NDA surfacing.**
+   Surface the same account NDA in the password/outsider flow keyed on the
+   outsider `lp_id`; sign-once via `unique(lp_id)`; informational only (no extra
+   gate). Tests: returning outsider not re-prompted; no change to outsider
+   visibility gating.
+9. **PR 9 — Admin profile-drawer "Signed NDAs" + investors-table badge.**
+   Derived `accountNdaSigned` on `AdminInvestorRow` + **NDA Signed / NDA Pending**
+   badge; "Signed NDAs" drawer section (account + per-opportunity) with
+   signed-URL view/download; `setAccountDefaultNdaTemplate` control in the NDA
+   Templates view. Tests: badge reflects derived status; download authz
+   admin-only.
+10. **PR 10 — Email signed copy (Loops) + tokenized download route.**
+    `sendNdaSignedCopyEmail` + `LOOPS_TEMPLATE_NDA_SIGNED_COPY`; `/nda/download/[token]`
+    route re-issuing fresh signed URLs; fire from the webhook on any
+    `signed`+stored (account or per-opportunity). Tests: email fires once
+    (idempotent); token route authz + expiry; flow continues if email fails.
+
+> **Deferred (not in this track): promote account NDA to a hard viewing gate.**
+> If the user later wants the account NDA to block viewing, add the §4B.9 RLS
+> swap (`current_lp_has_account_nda()` + two-tier `opportunity_sections` policy)
+> + the outsider app-layer check as a separate PR. Not planned now.
+
+#### Track 2 — Access-model redesign (§4A; LARGELY SUPERSEDED — do not build as-is)
+
+> The team shipped a **status-based** insider model (migration `0012`) and
+> **kept** the password/outsider mechanism (now carrying the account-level NDA,
+> Track 1B). The original §4A PRs below — introducing an `lp_audience` column and
+> **deleting** the password flow — are **not** the current plan. They are
+> retained only as the record of the path-not-taken; build them only if the team
+> later decides to fully retire the password mechanism.
+>
+> - ~~PR — add `lp_audience` / `opportunity_audience` columns + `current_lp_audience()`~~ *(superseded by status-based 0012)*
+> - ~~PR — swap RLS to audience + force per-opportunity NDA universal~~ *(superseded: per-opportunity NDA stays optional; account NDA is informational, not a gate, §4B)*
+> - ~~PR — remove guest path + service-role bypass~~ *(password path kept; the per-opportunity NDA gate already handles guests; the deferred account-NDA hard gate would add an app-layer check per §4B.9)*
+> - ~~PR — delete password mechanism / drop `password_protected` / retire `outsider` status~~ *(password mechanism kept)*
 
 #### Future (not scheduled) — alternative engines
 
-10. **Dropbox Sign / DocSend / DocuSign / etc.** slot in behind
+11. **Dropbox Sign / DocSend / DocuSign / etc.** slot in behind
     `signature_provider` only if SignatureAPI falters or a deal demands DocSend's
     deck analytics (then prefer the hybrid). DocSend bridge (Zapier relay +
     reconciliation UI / inbound-email) per §3c / §6.3–6.4.
@@ -1291,23 +1795,42 @@ the SignatureAPI engine (Track 1) can ship on today's access model and does not
 processor, the plan tier that exposes the "New signed document" trigger, and
 per-opportunity vs per-LP links.
 
-**Access-model redesign (§4A) — confirm before Track 2:**
+> **Resolved by the user (no longer open):** signup is unchanged — pending `lps`
+> lead, no auth user (Option A; Option B rejected); approval is manual and **not**
+> hard-blocked by the NDA; approval is the only login gate; and the account NDA
+> is **informational/manual** — it is **not** an automatic viewing gate (the only
+> automatic NDA gate is the per-opportunity one). See §4B.
 
-3. **Commit to the insider/outsider + universal-NDA model?** This is the gating
-   decision for Track 2.
-4. **Do admins previewing need to sign?** Recommendation: no (§4A.9.1).
-5. **Insider↔outsider reclassification:** what happens to signed NDAs/access?
-   Recommendation: NDAs survive (keyed on lp+opportunity); visibility follows
-   the new audience (§4A.9.2).
-6. **Keep the `'both'` audience value?** Recommendation: yes (§4A.9.3).
-7. **Does universal NDA change invite/onboarding?** Yes — outsiders must be
-   invited + authenticate (no more password unlock). Confirm onboarding mints
-   outsider-classified accounts (§4A.9.4).
-8. **Any opportunity viewable without an NDA?** Confirm "no body without NDA;
-   title/teaser stay visible." Keep `nda_required` as an admin escape hatch only
-   if a true no-NDA teaser listing is needed (§4A.9.5).
-9. **Keep per-LP `opportunity_access` as an optional allowlist, or drop it?**
-   Recommendation: keep as optional narrowing override (§4A.3).
+**Account-level NDA (§4B) — remaining decisions:**
+
+7. **One standard account NDA for everyone, or different for insiders vs
+   outsiders?** Recommendation: start with a single `is_account_default`
+   template for all; the data model (`account_ndas.nda_template_id`) supports
+   splitting later without migration pain (§4B.3).
+8. **Insider↔outsider reclassification effects.** A signed account NDA is keyed
+   on `lp_id`, so it **survives** reclassification (one account = one account
+   NDA). Confirm that's intended, and that an outsider who becomes an insider
+   keeps the same signed account NDA (recommended: yes).
+9. **No account-default template set — behavior.** Recommendation: the
+   account-NDA step is **skipped** with an admin setup warning (since the account
+   NDA does not gate anything, a missing default never blocks an LP). Confirm
+   that's acceptable, or whether a default should be required before launch.
+10. **Loops attachments vs tokenized download route.** Confirm whether the Loops
+    plan supports transactional **attachments** (base64). If yes, optionally
+    attach the signed PDF; if no/unsure, use the **tokenized `/nda/download/[token]`
+    route** (§4B.8, the recommended default).
+11. **Re-sign on NDA version change.** When the standard NDA text changes (new
+    `nda_templates` version / new default), do existing signers need to re-sign?
+    Recommendation: **no automatic re-sign** — historical `account_ndas` stay
+    valid against the version they signed; only *new* signers get the new
+    version. Flag if legal wants forced re-execution.
+
+**Access-model (§4A) — remaining:**
+
+12. **Fully retire the password mechanism later?** Not now (the user wants it
+    kept, now carrying the informational account NDA). Revisit only if outsiders
+    are migrated to real auth sessions — the only thing that would let the §4A
+    Track 2 PRs run.
 
 ### Pre-go-live due-diligence checklist — SignatureAPI
 

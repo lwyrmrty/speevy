@@ -5,13 +5,25 @@ import { useRouter } from 'next/navigation';
 
 import {
   bulkApproveInvestors,
+  getInvestorSignedNdaUrl,
   updateInvestor,
   type UpdateInvestorResult,
 } from '@/app/admin/investors/actions';
+import { LpTagBadge, LpTagEditor } from '@/components/webflow/lp-tag-editor';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import {
   type InvestorSector,
 } from '@/lib/investor-request';
+import { type Tag } from '@/lib/lp-tags';
+
+export type SignedNdaItem = {
+  id: string;
+  tier: 'account' | 'opportunity';
+  label: string;
+  status: string;
+  signedAt: string | null;
+  hasDocument: boolean;
+};
 
 export type AdminInvestorRow = {
   id: string;
@@ -31,6 +43,12 @@ export type AdminInvestorRow = {
     amountCents: number | string | null;
     logoUrl: string | null;
   }[];
+  tags: Tag[];
+  // Derived account-NDA status (no new lps column): 'signed' | 'pending', or
+  // null when no account NDA has been sent yet.
+  accountNda: { status: 'signed' | 'pending'; signedAt: string | null } | null;
+  // Account + per-opportunity NDAs for the profile drawer's "Signed NDAs" list.
+  signedNdas: SignedNdaItem[];
 };
 
 const statusLabels: Record<AdminInvestorRow['status'], string> = {
@@ -93,6 +111,20 @@ function InvestorStatusBadge({ investor }: { investor: AdminInvestorRow }) {
   }
 
   return <InsiderStatusBadge status={investor.status} />;
+}
+
+// Derived account-NDA indicator. Signed → green; sent-but-not-signed → "Pending";
+// nothing rendered when no account NDA has been sent (keeps rows uncluttered).
+function AccountNdaBadge({ accountNda }: { accountNda: AdminInvestorRow['accountNda'] }) {
+  if (!accountNda) {
+    return null;
+  }
+
+  if (accountNda.status === 'signed') {
+    return <div className="cellstatus">NDA Signed</div>;
+  }
+
+  return <div className="cellstatus draft">NDA Pending</div>;
 }
 
 function CheckIcon() {
@@ -276,14 +308,82 @@ function InterestedOpportunitiesList({ opportunities }: { opportunities: AdminIn
   );
 }
 
+function ndaStatusLabel(status: string) {
+  if (status === 'signed') return 'Signed';
+  if (status === 'declined') return 'Declined';
+  if (status === 'expired') return 'Expired';
+  if (status === 'viewed') return 'Viewed';
+  return 'Pending';
+}
+
+// Read-only list of an investor's executed/in-flight NDAs (account + each
+// per-opportunity). View/Download requests a short-lived signed URL on demand
+// via an admin-only server action; the raw storage key is never exposed.
+function SignedNdasSection({ ndas }: { ndas: SignedNdaItem[] }) {
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleView(nda: SignedNdaItem) {
+    setError(null);
+    setPendingId(nda.id);
+    startTransition(async () => {
+      const result = await getInvestorSignedNdaUrl({ tier: nda.tier, ndaId: nda.id });
+      setPendingId(null);
+      if (result.status === 'success') {
+        window.open(result.url, '_blank', 'noopener,noreferrer');
+      } else {
+        setError(result.message);
+      }
+    });
+  }
+
+  if (ndas.length === 0) {
+    return <div className="dimish">No NDAs on file yet.</div>;
+  }
+
+  return (
+    <div className="speevy-interest-opportunity-list">
+      {ndas.map((nda) => (
+        <div key={`${nda.tier}-${nda.id}`} className="speevy-interest-opportunity-row">
+          <div className="speevy-interest-opportunity-main">
+            <div className="cellname">{nda.label}</div>
+            <div className="dimsmall">
+              {nda.tier === 'account' ? 'Account NDA' : 'Opportunity NDA'} · {ndaStatusLabel(nda.status)}
+              {nda.signedAt ? ` · ${formatJoinedDate(nda.signedAt)}` : ''}
+            </div>
+          </div>
+          {nda.hasDocument ? (
+            <button
+              type="button"
+              className="button short secondary w-inline-block"
+              onClick={() => handleView(nda)}
+              disabled={isPending && pendingId === nda.id}
+            >
+              <div>{isPending && pendingId === nda.id ? 'Opening…' : 'View / Download'}</div>
+            </button>
+          ) : (
+            <div className="dimsmall">{ndaStatusLabel(nda.status)}</div>
+          )}
+        </div>
+      ))}
+      {error ? <div className="speevy-form-message error">{error}</div> : null}
+    </div>
+  );
+}
+
 function InvestorSlideout({
   investor,
+  allTags,
   onClose,
   onSaved,
+  onTagsChanged,
 }: {
   investor: AdminInvestorRow;
+  allTags: Tag[];
   onClose: () => void;
   onSaved: () => void;
+  onTagsChanged: () => void;
 }) {
   const [fullName, setFullName] = useState(investor.fullName ?? '');
   const [entityName, setEntityName] = useState(investor.entityName ?? '');
@@ -324,6 +424,7 @@ function InvestorSlideout({
             <div className="dimsmall">{investor.email}</div>
             <div className="alignrow aligncenter" style={{ gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
               <InvestorStatusBadge investor={investor} />
+              <AccountNdaBadge accountNda={investor.accountNda} />
             </div>
             <div className="speevy-slideout-stats">
               <div className="speevy-slideout-stat">
@@ -421,6 +522,21 @@ function InvestorSlideout({
             </div>
           </div>
 
+          <div className="fieldblock">
+            <div className="fieldlabel">Tags</div>
+            <LpTagEditor
+              lpId={investor.id}
+              assignedTags={investor.tags}
+              allTags={allTags}
+              onChanged={onTagsChanged}
+            />
+          </div>
+
+          <div className="fieldblock">
+            <div className="fieldlabel">Signed NDAs</div>
+            <SignedNdasSection ndas={investor.signedNdas} />
+          </div>
+
           <div className="fieldrow">
             <div className="fieldblock">
               <div className="fieldlabel">Min Check</div>
@@ -454,9 +570,11 @@ function InvestorSlideout({
 
 export function AdminInvestorsTable({
   investors,
+  allTags,
   initialSelectedInvestorId,
 }: {
   investors: AdminInvestorRow[];
+  allTags: Tag[];
   initialSelectedInvestorId?: string | null;
 }) {
   const router = useRouter();
@@ -676,6 +794,10 @@ export function AdminInvestorsTable({
                     <div className="cellname">{investor.fullName || investor.email}</div>
                     <div className="alignrow aligncenter" style={{ gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
                       <InvestorStatusBadge investor={investor} />
+                      <AccountNdaBadge accountNda={investor.accountNda} />
+                      {investor.tags.map((tag) => (
+                        <LpTagBadge key={tag.id} tag={tag} />
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -716,12 +838,14 @@ export function AdminInvestorsTable({
       {selectedInvestor ? (
         <InvestorSlideout
           investor={selectedInvestor}
+          allTags={allTags}
           onClose={closeInvestorSlideout}
           onSaved={() => {
             setSelectedInvestorId(null);
             router.replace('/admin/investors', { scroll: false });
             router.refresh();
           }}
+          onTagsChanged={() => router.refresh()}
         />
       ) : null}
     </>

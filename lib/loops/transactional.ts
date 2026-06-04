@@ -47,6 +47,17 @@ type SendLpApprovedEmailParams = {
   idempotencyKey: string;
 };
 
+type SendNdaSignedCopyEmailParams = {
+  email: string;
+  firstName: string;
+  ndaName: string;
+  signedAt: string;
+  // Tokenized Speevy download link (re-issues a fresh signed Storage URL on each
+  // click). Never a raw storage key or long-lived public URL.
+  downloadUrl: string;
+  idempotencyKey: string;
+};
+
 function getLoopsApiKey() {
   return process.env.LOOPS_API_KEY;
 }
@@ -71,6 +82,10 @@ function getLpApprovedTemplateId() {
   return process.env.LOOPS_TEMPLATE_LP_APPROVED;
 }
 
+function getNdaSignedTemplateId() {
+  return process.env.LOOPS_TEMPLATE_NDA_SIGNED;
+}
+
 export function hasLoopsLoginCodeEnv() {
   return Boolean(getLoopsApiKey() && getLoginCodeTemplateId());
 }
@@ -89,6 +104,10 @@ export function hasLoopsAdminLpAccessRequestEnv() {
 
 export function hasLoopsLpApprovedEnv() {
   return Boolean(getLoopsApiKey() && getLpApprovedTemplateId());
+}
+
+export function hasLoopsNdaSignedEnv() {
+  return Boolean(getLoopsApiKey() && getNdaSignedTemplateId());
 }
 
 export async function sendLoginCodeEmail({
@@ -329,6 +348,59 @@ export async function sendLpApprovedEmail({
         firstName,
         investorName,
         loginUrl,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    let message = `Loops transactional email failed with status ${response.status}.`;
+
+    try {
+      const body = await response.json();
+      if (typeof body?.message === 'string') {
+        message = body.message;
+      }
+    } catch {
+      // Keep the status-based message if Loops returns a non-JSON response.
+    }
+
+    throw new Error(message);
+  }
+}
+
+// "Your signed NDA" email. Loops transactional has no attachments wired here, so
+// we send a tokenized download LINK (the route re-issues a fresh signed Storage
+// URL on each click). The recipient is the signer's own address; do not log it.
+export async function sendNdaSignedCopyEmail({
+  email,
+  firstName,
+  ndaName,
+  signedAt,
+  downloadUrl,
+  idempotencyKey,
+}: SendNdaSignedCopyEmailParams) {
+  const apiKey = getLoopsApiKey();
+  const transactionalId = getNdaSignedTemplateId();
+
+  if (!apiKey || !transactionalId) {
+    throw new Error('Loops NDA signed copy email environment variables are not configured.');
+  }
+
+  const response = await fetch('https://app.loops.so/api/v1/transactional', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify({
+      transactionalId,
+      email,
+      dataVariables: {
+        firstName,
+        ndaName,
+        signedAt,
+        downloadUrl,
       },
     }),
   });

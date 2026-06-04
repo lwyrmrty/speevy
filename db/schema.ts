@@ -24,7 +24,7 @@ import {
   index,
   primaryKey,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 // ---------------------------------------------------------------------------
 // Reference to Supabase's auth.users table.
@@ -115,6 +115,14 @@ export const auditAction = pgEnum('audit_action', [
   'interest.withdrawn',
   'nda.sent',
   'nda.signed',
+  'nda_template.created',
+  'nda_template.updated',
+  'nda_template.archived',
+  'tag.created',
+  'tag.updated',
+  'tag.deleted',
+  'lp.tag_added',
+  'lp.tag_removed',
   'auth.login',
   'auth.logout',
 ]);
@@ -195,6 +203,38 @@ export const lpDocuments = pgTable('lp_documents', {
 }));
 
 // ---------------------------------------------------------------------------
+// tags — freely creatable, admin-managed labels applied to LPs.
+// Internal admin metadata only (LPs never read it, like internal_notes).
+// `color` is one of the Untitled UI Badge palette names; defaults to 'gray'.
+// Names are unique case-insensitively (enforced by a lower(name) unique index).
+// ---------------------------------------------------------------------------
+export const tags = pgTable('tags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  color: text('color').notNull().default('gray'),
+  createdByProfileId: uuid('created_by_profile_id').notNull().references(() => profiles.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  nameLowerIdx: uniqueIndex('tags_name_lower_idx').on(sql`lower(${t.name})`),
+}));
+
+// ---------------------------------------------------------------------------
+// lp_tags — many-to-many join between lps and tags.
+// Composite PK (lp_id, tag_id) guarantees one assignment per pair, mirroring
+// the opportunity_access join-table convention.
+// ---------------------------------------------------------------------------
+export const lpTags = pgTable('lp_tags', {
+  lpId: uuid('lp_id').notNull().references(() => lps.id, { onDelete: 'cascade' }),
+  tagId: uuid('tag_id').notNull().references(() => tags.id, { onDelete: 'cascade' }),
+  assignedByProfileId: uuid('assigned_by_profile_id').notNull().references(() => profiles.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.lpId, t.tagId] }),
+  tagIdx: index('lp_tags_tag_idx').on(t.tagId),
+}));
+
+// ---------------------------------------------------------------------------
 // opportunities — the deal pages.
 // Composition lives in opportunity_sections.
 // ---------------------------------------------------------------------------
@@ -221,7 +261,10 @@ export const opportunities = pgTable('opportunities', {
   thumbnailStorageKey: text('thumbnail_storage_key'),
   logoStorageKey: text('logo_storage_key'),
   ndaRequired: boolean('nda_required').notNull().default(false),
-  ndaTemplateId: text('nda_template_id'),
+  // Points at an nda_templates.id (the Speevy-owned NDA catalog). SignatureAPI
+  // has no listable hosted-template resource, so the catalog row carries the
+  // provider-specific source reference. See docs/nda-gate-design.md §5.2.
+  ndaTemplateId: uuid('nda_template_id').references(() => ndaTemplates.id, { onDelete: 'set null' }),
   watermarkEnabled: boolean('watermark_enabled').notNull().default(false),
   passwordProtected: boolean('password_protected').notNull().default(false),
 
@@ -337,6 +380,40 @@ export const opportunityAccess = pgTable('opportunity_access', {
 }));
 
 // ---------------------------------------------------------------------------
+// nda_templates — Speevy-owned catalog of reusable NDA documents.
+//
+// SignatureAPI exposes no listable hosted-template resource: an NDA is reused
+// via a DOCX/PDF source file the admin uploads to the SignatureAPI Library
+// (referenced by a stable URL) with {{merge}} / [[place]] markers. Speevy owns
+// this catalog so the opportunity editor dropdown has something to list, and so
+// historical opportunity_ndas stay attributable to the exact NDA that was
+// signed. Admin-managed only; LPs never read it. Soft-disable via archived_at
+// (never hard delete — preserve attribution). See docs/nda-gate-design.md §5.3.
+// ---------------------------------------------------------------------------
+export const ndaTemplates = pgTable('nda_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  description: text('description'),
+  signatureProvider: text('signature_provider').notNull().default('signatureapi'),
+  // SignatureAPI Library file URL (or stored-upload reference).
+  sourceFileUrl: text('source_file_url').notNull(),
+  // {{merge}} fields + [[place]] positions / recipient roles config.
+  fieldsConfig: jsonb('fields_config').notNull().default({}),
+  version: integer('version').notNull().default(1),
+  // Designates THE standard account-level NDA template (one row per investor
+  // signs it once). A partial unique index (see migration) keeps at most one
+  // active (archived_at IS NULL) row with is_account_default = true.
+  // See docs/nda-gate-design.md §4B.3.
+  isAccountDefault: boolean('is_account_default').notNull().default(false),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+  createdByProfileId: uuid('created_by_profile_id').notNull().references(() => profiles.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  activeIdx: index('nda_templates_active_idx').on(t.archivedAt),
+}));
+
+// ---------------------------------------------------------------------------
 // opportunity_ndas — NDA signatures tied to a specific opportunity.
 // Required gate for viewing opportunity_sections when nda_required = true.
 // ---------------------------------------------------------------------------
@@ -344,7 +421,7 @@ export const opportunityNdas = pgTable('opportunity_ndas', {
   id: uuid('id').primaryKey().defaultRandom(),
   opportunityId: uuid('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
   lpId: uuid('lp_id').notNull().references(() => lps.id, { onDelete: 'cascade' }),
-  signatureProvider: text('signature_provider').notNull().default('dropbox_sign'),
+  signatureProvider: text('signature_provider').notNull().default('signatureapi'),
   envelopeId: text('envelope_id').notNull(),
   status: signatureStatus('status').notNull().default('sent'),
   sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
@@ -353,6 +430,67 @@ export const opportunityNdas = pgTable('opportunity_ndas', {
 }, (t) => ({
   uniqOpportunityLp: uniqueIndex('opportunity_ndas_opp_lp_idx').on(t.opportunityId, t.lpId),
   envelopeIdx: uniqueIndex('opportunity_ndas_envelope_idx').on(t.envelopeId),
+}));
+
+// ---------------------------------------------------------------------------
+// account_ndas — the single account-level NDA signed ONCE per investor
+// (insiders and outsiders). Parallel to opportunity_ndas, but unique per LP.
+//
+// IMPORTANT: this is an INFORMATIONAL status/badge only. It is NOT part of any
+// RLS gate — do not add it to the opportunity_sections policy. The only
+// automatic NDA gate remains the per-opportunity NDA (opportunity_ndas). A
+// future hard-gate option is preserved in docs/nda-gate-design.md §4B.9.
+//
+// Writes are service-role only (the SignatureAPI webhook + the onboarding
+// server action), exactly like opportunity_ndas; RLS allows admin read + LP
+// read-own. See docs/nda-gate-design.md §4B.3.
+// ---------------------------------------------------------------------------
+export const accountNdas = pgTable('account_ndas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  lpId: uuid('lp_id').notNull().references(() => lps.id, { onDelete: 'cascade' }),
+  // Which standard NDA template was signed; kept so historical signatures stay
+  // attributable across template versions.
+  ndaTemplateId: uuid('nda_template_id').notNull().references(() => ndaTemplates.id),
+  signatureProvider: text('signature_provider').notNull().default('signatureapi'),
+  envelopeId: text('envelope_id').notNull(),
+  status: signatureStatus('status').notNull().default('sent'),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+  signedAt: timestamp('signed_at', { withTimezone: true }),
+  declinedAt: timestamp('declined_at', { withTimezone: true }),
+  expiredAt: timestamp('expired_at', { withTimezone: true }),
+  signedDocumentStorageKey: text('signed_document_storage_key'),
+  // Idempotency: last processed provider event id (the nda_webhook_events table
+  // is the primary anchor; this is a convenience denormalization).
+  lastWebhookEventId: text('last_webhook_event_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  lpIdx: uniqueIndex('account_ndas_lp_idx').on(t.lpId),
+  envelopeIdx: uniqueIndex('account_ndas_envelope_idx').on(t.envelopeId),
+}));
+
+// ---------------------------------------------------------------------------
+// nda_webhook_events — idempotency anchor for NDA signature webhooks.
+//
+// Primary v1 job: dedupe provider webhook deliveries on
+// (provider, provider_event_id) so replays/out-of-order deliveries are safe.
+// raw_payload stores the minimum needed for support/reconciliation and is
+// admin-read only (never surfaced to analytics; scrub PII before any log).
+// See docs/nda-gate-design.md §5.3.
+// ---------------------------------------------------------------------------
+export const ndaWebhookEvents = pgTable('nda_webhook_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  provider: text('provider').notNull(),
+  providerEventId: text('provider_event_id'),
+  eventType: text('event_type'),
+  // Whichever tier the event resolved to (one will be null).
+  accountNdaId: uuid('account_nda_id').references(() => accountNdas.id, { onDelete: 'set null' }),
+  opportunityNdaId: uuid('opportunity_nda_id').references(() => opportunityNdas.id, { onDelete: 'set null' }),
+  status: text('status').notNull().default('received'),
+  rawPayload: jsonb('raw_payload'),
+  receivedAt: timestamp('received_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  providerEventIdx: uniqueIndex('nda_webhook_events_provider_event_idx').on(t.provider, t.providerEventId),
 }));
 
 // ---------------------------------------------------------------------------
@@ -407,14 +545,39 @@ export const lpsRelations = relations(lps, ({ one, many }) => ({
   access: many(opportunityAccess),
   interests: many(interests),
   ndas: many(opportunityNdas),
+  accountNda: one(accountNdas, { fields: [lps.id], references: [accountNdas.lpId] }),
+  tags: many(lpTags),
+}));
+
+export const accountNdasRelations = relations(accountNdas, ({ one }) => ({
+  lp: one(lps, { fields: [accountNdas.lpId], references: [lps.id] }),
+  ndaTemplate: one(ndaTemplates, { fields: [accountNdas.ndaTemplateId], references: [ndaTemplates.id] }),
+}));
+
+export const tagsRelations = relations(tags, ({ one, many }) => ({
+  createdBy: one(profiles, { fields: [tags.createdByProfileId], references: [profiles.id] }),
+  lps: many(lpTags),
+}));
+
+export const lpTagsRelations = relations(lpTags, ({ one }) => ({
+  lp: one(lps, { fields: [lpTags.lpId], references: [lps.id] }),
+  tag: one(tags, { fields: [lpTags.tagId], references: [tags.id] }),
+  assignedBy: one(profiles, { fields: [lpTags.assignedByProfileId], references: [profiles.id] }),
 }));
 
 export const opportunitiesRelations = relations(opportunities, ({ one, many }) => ({
   createdBy: one(profiles, { fields: [opportunities.createdByProfileId], references: [profiles.id] }),
+  ndaTemplate: one(ndaTemplates, { fields: [opportunities.ndaTemplateId], references: [ndaTemplates.id] }),
   sections: many(opportunitySections),
   access: many(opportunityAccess),
   ndas: many(opportunityNdas),
   interests: many(interests),
+}));
+
+export const ndaTemplatesRelations = relations(ndaTemplates, ({ one, many }) => ({
+  createdBy: one(profiles, { fields: [ndaTemplates.createdByProfileId], references: [profiles.id] }),
+  opportunities: many(opportunities),
+  accountNdas: many(accountNdas),
 }));
 
 export const opportunitySectionsRelations = relations(opportunitySections, ({ one }) => ({

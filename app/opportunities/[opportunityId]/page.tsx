@@ -5,6 +5,7 @@ import { notFound, redirect } from 'next/navigation';
 import { DocumentViewerDrawer } from '@/components/webflow/document-viewer-drawer';
 import { OpportunityInterestCard } from '@/components/webflow/opportunity-interest-card';
 import { OpportunityPasswordGate } from '@/components/webflow/opportunity-password-gate';
+import { OutsiderAccountNda } from '@/components/webflow/outsider-account-nda';
 import { PageWatermark } from '@/components/webflow/page-watermark';
 import { SectionMiniNav } from '@/components/webflow/section-mini-nav';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
@@ -826,6 +827,7 @@ export default async function OpportunityPreviewPage({
                 </Link>
               </div>
               {sectionNavItems.length > 1 ? <SectionMiniNav items={sectionNavItems} /> : null}
+              {isGuest ? <OutsiderAccountNda opportunityId={opportunity.id} /> : null}
               <div className="herocard">
                 <img
                   src={thumbnailUrl ?? defaultThumbnail}

@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import {
   AdminInvestorsTable,
   type AdminInvestorRow,
+  type SignedNdaItem,
 } from '@/components/webflow/admin-investors-table';
 import { AdminInvestorsFallbackScript } from '@/components/webflow/admin-investors-fallback-script';
 import {
@@ -11,6 +12,7 @@ import {
 } from '@/components/webflow/admin-investors-status-filter';
 import { CopyInvestorInviteLinkButton } from '@/components/webflow/copy-investor-invite-link-button';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
+import { getTagsForLpIds, listTags } from '@/lib/lp-tags';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 export const metadata: Metadata = {
@@ -61,6 +63,37 @@ function normalizeSectors(value: unknown) {
 function getInterestOpportunity(opportunities: InterestRow['opportunities']) {
   return Array.isArray(opportunities) ? opportunities[0] : opportunities;
 }
+
+type NdaRelationName = { name: string | null } | { name: string | null }[] | null;
+type NdaRelationTitle = { title: string | null } | { title: string | null }[] | null;
+
+function relationName(relation: NdaRelationName) {
+  const value = Array.isArray(relation) ? relation[0] : relation;
+  return value?.name ?? null;
+}
+
+function relationTitle(relation: NdaRelationTitle) {
+  const value = Array.isArray(relation) ? relation[0] : relation;
+  return value?.title ?? null;
+}
+
+type AccountNdaQueryRow = {
+  id: string;
+  lp_id: string;
+  status: string;
+  signed_at: string | null;
+  signed_document_storage_key: string | null;
+  nda_templates: NdaRelationName;
+};
+
+type OpportunityNdaQueryRow = {
+  id: string;
+  lp_id: string;
+  status: string;
+  signed_at: string | null;
+  signed_document_storage_key: string | null;
+  opportunities: NdaRelationTitle;
+};
 
 function parseStatusFilter(value: string | string[] | undefined): InvestorStatusFilterValue {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -173,6 +206,57 @@ export default async function AdminInvestorsPage({
       ] as const),
     ),
   );
+  const [allTags, tagsByLp] = await Promise.all([
+    listTags(supabase),
+    getTagsForLpIds(supabase, investorIds),
+  ]);
+
+  // Account + per-opportunity NDAs for the badge (derived, no new lps column) and
+  // the profile drawer's "Signed NDAs" section. Download URLs are NOT minted here
+  // — the drawer requests a short-lived signed URL on demand via an admin action.
+  const [{ data: accountNdaData }, { data: opportunityNdaData }] = investorIds.length
+    ? await Promise.all([
+        supabase
+          .from('account_ndas')
+          .select('id, lp_id, status, signed_at, signed_document_storage_key, nda_templates ( name )')
+          .in('lp_id', investorIds),
+        supabase
+          .from('opportunity_ndas')
+          .select('id, lp_id, status, signed_at, signed_document_storage_key, opportunities ( title )')
+          .in('lp_id', investorIds),
+      ])
+    : [{ data: [] }, { data: [] }];
+
+  const accountNdaByLp = new Map<string, AdminInvestorRow['accountNda']>();
+  const signedNdasByLp = new Map<string, SignedNdaItem[]>();
+  investorIds.forEach((id) => signedNdasByLp.set(id, []));
+
+  ((accountNdaData ?? []) as AccountNdaQueryRow[]).forEach((nda) => {
+    const label = relationName(nda.nda_templates) ?? 'Account NDA';
+    accountNdaByLp.set(nda.lp_id, {
+      status: nda.status === 'signed' ? 'signed' : 'pending',
+      signedAt: nda.signed_at,
+    });
+    signedNdasByLp.get(nda.lp_id)?.push({
+      id: nda.id,
+      tier: 'account',
+      label,
+      status: nda.status,
+      signedAt: nda.signed_at,
+      hasDocument: Boolean(nda.signed_document_storage_key),
+    });
+  });
+
+  ((opportunityNdaData ?? []) as OpportunityNdaQueryRow[]).forEach((nda) => {
+    signedNdasByLp.get(nda.lp_id)?.push({
+      id: nda.id,
+      tier: 'opportunity',
+      label: relationTitle(nda.opportunities) ?? 'Opportunity NDA',
+      status: nda.status,
+      signedAt: nda.signed_at,
+      hasDocument: Boolean(nda.signed_document_storage_key),
+    });
+  });
   const rows: AdminInvestorRow[] = investors.map((investor) => ({
     id: investor.id,
     email: investor.email,
@@ -193,6 +277,9 @@ export default async function AdminInvestorsPage({
       amountCents: interest.amountCents,
       logoUrl: interest.logoStorageKey ? logoUrls.get(interest.logoStorageKey) ?? null : null,
     })),
+    tags: tagsByLp.get(investor.id) ?? [],
+    accountNda: accountNdaByLp.get(investor.id) ?? null,
+    signedNdas: signedNdasByLp.get(investor.id) ?? [],
   }));
 
   return (
@@ -207,7 +294,7 @@ export default async function AdminInvestorsPage({
                 <CopyInvestorInviteLinkButton />
               </div>
             </div>
-            <AdminInvestorsTable investors={rows} initialSelectedInvestorId={initialSelectedInvestorId ?? null} />
+            <AdminInvestorsTable investors={rows} allTags={allTags} initialSelectedInvestorId={initialSelectedInvestorId ?? null} />
             <AdminInvestorsFallbackScript />
           </div>
         </div>

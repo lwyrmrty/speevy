@@ -34,11 +34,29 @@ export function DocumentViewerDrawer({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setSelectedDocument(null);
+        return;
+      }
+
+      // Deter save (Cmd/Ctrl+S) and print-to-PDF (Cmd/Ctrl+P) while a
+      // document is open. This is a deterrent, not true prevention: a
+      // cross-origin PDF/Office viewer handles its own keyboard events, so
+      // this only catches shortcuts aimed at the host page.
+      const key = event.key.toLowerCase();
+      if ((event.metaKey || event.ctrlKey) && (key === 's' || key === 'p')) {
+        event.preventDefault();
       }
     }
 
+    function handleContextMenu(event: MouseEvent) {
+      event.preventDefault();
+    }
+
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    document.addEventListener('contextmenu', handleContextMenu);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('contextmenu', handleContextMenu);
+    };
   }, [selectedDocument]);
 
   return (

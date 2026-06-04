@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { Webhook, WebhookVerificationError } from 'standardwebhooks';
 
+import { hasLoopsNdaSignedEnv, sendNdaSignedCopyEmail } from '@/lib/loops/transactional';
+import { createNdaDownloadToken } from '@/lib/nda/tokens';
 import {
   downloadDeliverablePdf,
   getDeliverable,
@@ -22,9 +24,11 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 // Service-role use is allowed here: it happens ONLY after signature
 // verification. No secret, signer email, or other PII is logged.
 //
-// TODO(next UX PR — email): after a row reaches 'signed' and its PDF is stored,
-// trigger the Loops "your signed NDA" email (link to a tokenized download
-// route). Intentionally not wired in this PR.
+// After the sealed PDF is stored (deliverable.generated), the signer is emailed
+// a "your signed NDA" copy via Loops — a tokenized download link, since Loops
+// has no attachments wired. The email send happens AFTER the DB writes, is
+// wrapped so a failure never fails the webhook, and is skipped (logged) when the
+// Loops template env is unset. No signer email or PII is logged.
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -176,6 +180,7 @@ export async function POST(request: Request) {
   let tier: NdaTier | null = accountRow ? 'account' : null;
   let rowId = accountRow?.id ?? null;
   let currentStatus = accountRow?.status ?? null;
+  let lpId = accountRow?.lp_id ?? null;
 
   if (!tier) {
     const { data: opportunityRow } = await supabase
@@ -187,6 +192,7 @@ export async function POST(request: Request) {
       tier = 'opportunity';
       rowId = opportunityRow.id;
       currentStatus = opportunityRow.status;
+      lpId = opportunityRow.lp_id;
     }
   }
 
@@ -201,6 +207,9 @@ export async function POST(request: Request) {
   try {
     if (effect === 'deliverable') {
       await handleDeliverable({ supabase, table, rowId, tier, data, envelopeId });
+      // Email the signed copy AFTER the PDF is stored. Never let an email
+      // failure fail the webhook (it would force a needless provider retry).
+      await sendSignedCopyEmailSafe({ supabase, tier, rowId, lpId });
     } else if (effect === 'signed') {
       await applyStatusUpdate({
         supabase,
@@ -351,5 +360,76 @@ async function handleDeliverable(args: {
   const { error: updateError } = await supabase.from(table).update(patch).eq('id', rowId);
   if (updateError) {
     throw new Error('storage_key_update_failed');
+  }
+}
+
+// Email the signer their signed-NDA copy via Loops (tokenized download link).
+// Fully isolated from the webhook's success path: any failure (or a missing
+// Loops template) is logged and swallowed so the gate flip + storage stand.
+// No signer email or other PII is logged.
+async function sendSignedCopyEmailSafe(args: {
+  supabase: SupabaseAdmin;
+  tier: NdaTier;
+  rowId: string;
+  lpId: string | null;
+}): Promise<void> {
+  const { supabase, tier, rowId, lpId } = args;
+
+  if (!hasLoopsNdaSignedEnv()) {
+    console.warn('SignatureAPI webhook: LOOPS_TEMPLATE_NDA_SIGNED unset; skipping signed-copy email.');
+    return;
+  }
+  if (!lpId) return;
+
+  try {
+    const { data: lp } = await supabase
+      .from('lps')
+      .select('email')
+      .eq('id', lpId)
+      .maybeSingle();
+    if (!lp?.email) return;
+
+    // A human-friendly NDA label without leaking anything sensitive.
+    let ndaName = 'Your NDA';
+    if (tier === 'account') {
+      const { data: accountNda } = await supabase
+        .from('account_ndas')
+        .select('nda_templates ( name )')
+        .eq('id', rowId)
+        .maybeSingle();
+      const template = accountNda?.nda_templates as { name?: string } | { name?: string }[] | null;
+      const name = Array.isArray(template) ? template[0]?.name : template?.name;
+      if (name) ndaName = name;
+    } else {
+      const { data: opportunityNda } = await supabase
+        .from('opportunity_ndas')
+        .select('opportunities ( title )')
+        .eq('id', rowId)
+        .maybeSingle();
+      const opportunity = opportunityNda?.opportunities as
+        | { title?: string }
+        | { title?: string }[]
+        | null;
+      const title = Array.isArray(opportunity) ? opportunity[0]?.title : opportunity?.title;
+      if (title) ndaName = `${title} NDA`;
+    }
+
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
+    const downloadUrl = `${appUrl}/nda/download/${createNdaDownloadToken(tier, rowId)}`;
+
+    await sendNdaSignedCopyEmail({
+      email: lp.email,
+      ndaName,
+      signedAt: new Date().toISOString(),
+      downloadUrl,
+      // One email per stored deliverable row; the webhook event dedupe upstream
+      // already guarantees this branch runs once per delivery.
+      idempotencyKey: `nda-signed-copy-${tier}-${rowId}`,
+    });
+  } catch (error) {
+    console.error(
+      'SignatureAPI webhook: signed-copy email failed:',
+      error instanceof Error ? error.message : 'unknown_error',
+    );
   }
 }

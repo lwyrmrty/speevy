@@ -2,7 +2,14 @@
 
 import { z } from 'zod';
 
+import { cookies } from 'next/headers';
+
 import { getAccountDefaultNdaTemplate } from '@/lib/nda/account-default';
+import { verifyNdaOnboardingToken } from '@/lib/nda/tokens';
+import {
+  opportunityAccessCookieName,
+  verifyOpportunityAccessToken,
+} from '@/lib/opportunity-access';
 import {
   createEnvelope,
   getEnvelope,
@@ -24,11 +31,11 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 // The same envelope-creation path is generalized in lib/signatureapi/client so
 // per-opportunity NDA sending can reuse it later (speevy_kind: 'opportunity').
 //
-// TODO(next UX PR — onboarding ceremony): the tokenized onboarding page
-// (/onboarding/nda?token=…) has no auth session yet. Add a token-validated
-// entry point here that resolves the lp_id from a signed single-use token and
-// then calls `ensureAccountNdaEnvelope` (the shared helper below). The outsider
-// path resolves lp_id from the access cookie instead. Both reuse this helper.
+// The tokenized onboarding entry point (getAccountNdaCeremonyForOnboardingToken)
+// resolves the lp_id from a signed, expiring token (the lead has no auth session
+// yet); the outsider entry point (getAccountNdaCeremonyForOutsider) resolves the
+// lp_id from the opportunity access cookie's email. Both reuse the shared
+// `ensureAccountNdaEnvelope` helper below. See docs/nda-gate-design.md §4B.5.
 
 export type AccountNdaEnvelopeResult =
   | { status: 'success'; ceremonyUrl: string; ndaStatus: string }
@@ -272,5 +279,79 @@ export async function createAccountNdaEnvelopeForLp(
   return ensureAccountNdaEnvelope(
     { id: lp.id, email: lp.email, fullName: lp.full_name },
     { profileId: user.id, role: 'admin' },
+  );
+}
+
+/**
+ * Onboarding entry point (no auth session): resolve the lp_id from a signed,
+ * expiring onboarding token and ensure their account NDA envelope. Used by the
+ * tokenized /onboarding/nda page right after the join form. Token verification
+ * is the authorization here — it proves the holder created this exact lead.
+ * Uses the service role to read the lp because the lead has no session/profile.
+ */
+export async function getAccountNdaCeremonyForOnboardingToken(
+  token: string | undefined,
+): Promise<AccountNdaEnvelopeResult> {
+  const lpId = verifyNdaOnboardingToken(token);
+  if (!lpId) {
+    return { status: 'error', message: 'This NDA link is invalid or has expired.' };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: lp } = await supabase
+    .from('lps')
+    .select('id, email, full_name')
+    .eq('id', lpId)
+    .maybeSingle();
+
+  if (!lp) {
+    return { status: 'error', message: 'We could not find your investor record.' };
+  }
+
+  // No profile yet for a pending lead, so the actor profile id is null. The
+  // audit row still records lp_id + envelope in its metadata.
+  return ensureAccountNdaEnvelope(
+    { id: lp.id, email: lp.email, fullName: lp.full_name },
+    { profileId: null, role: 'lp' },
+  );
+}
+
+/**
+ * Outsider entry point (no auth session): resolve the lp_id from the
+ * opportunity access cookie's verified email and ensure their account NDA
+ * envelope. Surfaced once on a password-gated opportunity the outsider has
+ * unlocked. The signed, opportunity-scoped cookie is the authorization.
+ */
+export async function getAccountNdaCeremonyForOutsider(
+  opportunityId: string,
+): Promise<AccountNdaEnvelopeResult> {
+  if (!z.string().uuid().safeParse(opportunityId).success) {
+    return { status: 'error', message: 'Unable to load your account NDA.' };
+  }
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(opportunityAccessCookieName(opportunityId))?.value;
+  const email = verifyOpportunityAccessToken(token, opportunityId);
+
+  if (!email) {
+    return { status: 'error', message: 'Unlock this opportunity before signing the NDA.' };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: lp } = await supabase
+    .from('lps')
+    .select('id, email, full_name')
+    .eq('email', email)
+    .maybeSingle();
+
+  if (!lp) {
+    // The outsider lps row is created when access is granted; if it is missing
+    // we skip cleanly rather than error (the NDA is informational).
+    return { status: 'skipped', message: 'No investor record is associated with this access yet.' };
+  }
+
+  return ensureAccountNdaEnvelope(
+    { id: lp.id, email: lp.email, fullName: lp.full_name },
+    { profileId: null, role: 'lp' },
   );
 }

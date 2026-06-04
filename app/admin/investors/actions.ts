@@ -180,6 +180,57 @@ export async function updateInvestor(formData: FormData): Promise<UpdateInvestor
   return { status: 'success', message: 'Investor updated.' };
 }
 
+const signedNdaUrlSchema = z.object({
+  tier: z.enum(['account', 'opportunity']),
+  ndaId: z.string().uuid(),
+});
+
+export type SignedNdaUrlResult =
+  | { status: 'success'; url: string }
+  | { status: 'error'; message: string };
+
+const NDA_STORAGE_BUCKET = 'nda-documents';
+
+// Admin-only: return a short-lived signed URL for a stored, sealed NDA PDF
+// (account or per-opportunity). First line validates admin role. The raw storage
+// key is never exposed; the URL expires in minutes. See docs/nda-gate-design.md §4B.6.
+export async function getInvestorSignedNdaUrl(
+  payload: z.input<typeof signedNdaUrlSchema>,
+): Promise<SignedNdaUrlResult> {
+  const auth = await ensureAdmin();
+  if (!auth.ok) {
+    return { status: 'error', message: auth.message };
+  }
+
+  const parsed = signedNdaUrlSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { status: 'error', message: 'Select a valid NDA document.' };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const table = parsed.data.tier === 'account' ? 'account_ndas' : 'opportunity_ndas';
+  const { data: row } = await supabase
+    .from(table)
+    .select('signed_document_storage_key')
+    .eq('id', parsed.data.ndaId)
+    .maybeSingle();
+
+  const storageKey = row?.signed_document_storage_key ?? null;
+  if (!storageKey) {
+    return { status: 'error', message: 'No signed document is available for this NDA yet.' };
+  }
+
+  const { data: signed } = await supabase.storage
+    .from(NDA_STORAGE_BUCKET)
+    .createSignedUrl(storageKey, 5 * 60);
+
+  if (!signed?.signedUrl) {
+    return { status: 'error', message: 'Could not prepare the document. Please try again.' };
+  }
+
+  return { status: 'success', url: signed.signedUrl };
+}
+
 export async function bulkApproveInvestors(ids: string[]): Promise<UpdateInvestorResult> {
   const auth = await ensureAdmin();
   if (!auth.ok) {

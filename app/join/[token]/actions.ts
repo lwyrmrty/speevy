@@ -15,12 +15,16 @@ import {
   sendAdminLpAccessRequestEmail,
   sendLpSignupReceivedEmail,
 } from '@/lib/loops/transactional';
+import { createNdaOnboardingToken } from '@/lib/nda/tokens';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { hasSupabaseServiceRoleEnv } from '@/lib/supabase/env';
 
 export type InvestorRequestActionState = {
   status: 'idle' | 'success' | 'error';
   message: string;
+  // Tokenized account-NDA onboarding link for the just-created lead. Shown right
+  // after the form so the lead can sign immediately (no auth session needed).
+  onboardingUrl?: string;
 };
 
 const investmentRangeValueSchema = z.coerce
@@ -118,24 +122,28 @@ export async function submitInvestorRequest(
   }
 
   const supabase = createSupabaseAdminClient();
-  const { error } = await supabase.from('lps').upsert(
-    {
-      email: normalizedEmail,
-      full_name: fullName,
-      entity_name: request.companyName,
-      status: 'pending_review',
-      accreditation_status: 'self_attested',
-      sectors_interested: request.sectors,
-      investment_range_min_cents: request.investmentRangeMin * 100,
-      investment_range_max_cents: request.investmentRangeMax * 100,
-      internal_notes: JSON.stringify(requestNotes, null, 2),
-    },
-    {
-      onConflict: 'email',
-    },
-  );
+  const { data: lead, error } = await supabase
+    .from('lps')
+    .upsert(
+      {
+        email: normalizedEmail,
+        full_name: fullName,
+        entity_name: request.companyName,
+        status: 'pending_review',
+        accreditation_status: 'self_attested',
+        sectors_interested: request.sectors,
+        investment_range_min_cents: request.investmentRangeMin * 100,
+        investment_range_max_cents: request.investmentRangeMax * 100,
+        internal_notes: JSON.stringify(requestNotes, null, 2),
+      },
+      {
+        onConflict: 'email',
+      },
+    )
+    .select('id')
+    .single();
 
-  if (error) {
+  if (error || !lead) {
     return {
       status: 'error',
       message:
@@ -143,12 +151,17 @@ export async function submitInvestorRequest(
     };
   }
 
+  // Tokenized onboarding link so the lead can sign the account NDA right after
+  // the form (they have no auth session yet). Signing is optional/informational
+  // and never blocks approval; see docs/nda-gate-design.md §4B.5.
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
+  const onboardingUrl = `${appUrl}/onboarding/nda?token=${createNdaOnboardingToken(lead.id)}`;
+
   if (hasLoopsAdminLpAccessRequestEnv()) {
     const { data: admins } = await supabase
       .from('profiles')
       .select('email')
       .eq('role', 'admin');
-    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
 
     const results = await Promise.allSettled(
       (admins ?? []).map((admin) =>
@@ -188,5 +201,6 @@ export async function submitInvestorRequest(
     status: 'success',
     message:
       'Request submitted. Harpoon Ventures will review your information and follow up directly.',
+    onboardingUrl,
   };
 }

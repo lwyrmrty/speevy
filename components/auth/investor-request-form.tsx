@@ -375,10 +375,20 @@ export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
               <CheckIcon />
             </div>
             <div id="signup-success-title" className="sideheading large">Request submitted</div>
-            <div className="sidesubheading signup-success-copy">{state.message}</div>
-            <a href="/login" className="button w-button signup-success-button">
-              Log in
-            </a>
+            <div className="sidesubheading signup-success-copy">
+              {state.onboardingUrl
+                ? `${state.message} Next, please review and sign our standard NDA.`
+                : state.message}
+            </div>
+            {state.onboardingUrl ? (
+              <a href={state.onboardingUrl} className="button w-button signup-success-button">
+                Review &amp; sign NDA
+              </a>
+            ) : (
+              <a href="/login" className="button w-button signup-success-button">
+                Log in
+              </a>
+            )}
           </div>
         </div>
       ) : null}

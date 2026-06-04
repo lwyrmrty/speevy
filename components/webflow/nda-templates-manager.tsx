@@ -14,27 +14,62 @@ type NdaTemplatesManagerProps = {
   templates: NdaTemplateSummary[];
 };
 
+const DEFAULT_FIELDS_CONFIG_JSON = `{
+  "format": "docx",
+  "places": [
+    { "key": "signer_signs_here", "type": "signature", "recipient_key": "signer", "height": 48 },
+    { "key": "signer_signed_at", "type": "recipient_completed_date", "recipient_key": "signer" },
+    { "key": "signer_name", "type": "recipient_name", "recipient_key": "signer" },
+    { "key": "signer_email", "type": "recipient_email", "recipient_key": "signer" }
+  ]
+}`;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [sourceFileUrl, setSourceFileUrl] = useState('');
+  const [fieldsConfigJson, setFieldsConfigJson] = useState(DEFAULT_FIELDS_CONFIG_JSON);
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const resetForm = () => {
     setName('');
     setDescription('');
     setSourceFileUrl('');
+    setFieldsConfigJson(DEFAULT_FIELDS_CONFIG_JSON);
   };
 
   const handleCreate = () => {
     setMessage(null);
+
+    const trimmedConfig = fieldsConfigJson.trim();
+    let fieldsConfig: Record<string, unknown> | undefined;
+    if (trimmedConfig) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(trimmedConfig);
+      } catch {
+        setMessage({ kind: 'error', text: 'Signature field configuration must be valid JSON.' });
+        return;
+      }
+      if (!isPlainObject(parsed)) {
+        setMessage({ kind: 'error', text: 'Signature field configuration must be valid JSON.' });
+        return;
+      }
+      fieldsConfig = parsed;
+    }
+
     startTransition(async () => {
       const result = await createNdaTemplate({
         name,
         description: description || undefined,
         sourceFileUrl,
+        ...(fieldsConfig ? { fieldsConfig } : {}),
       });
 
       if (result.status === 'success') {
@@ -108,6 +143,20 @@ export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
             value={sourceFileUrl}
             onChange={(event) => setSourceFileUrl(event.currentTarget.value)}
           />
+        </div>
+        <div className="formfields-block spacetop">
+          <div className="fieldlabel">Signature field configuration (JSON)</div>
+          <textarea
+            className="formfields w-input"
+            rows={10}
+            value={fieldsConfigJson}
+            onChange={(event) => setFieldsConfigJson(event.currentTarget.value)}
+            style={{ fontFamily: 'monospace', resize: 'vertical' }}
+          />
+          <div className="dimish" style={{ marginTop: 6 }}>
+            Keys must match the [[place]] markers in the document (e.g.
+            [[signer_signs_here]]).
+          </div>
         </div>
         <div className="spacetop" style={{ marginTop: 14 }}>
           <button

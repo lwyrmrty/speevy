@@ -26,15 +26,11 @@ if (typeof window !== 'undefined') {
 
 export class SignatureApiError extends Error {
   readonly status: number;
-  // Optional, truncated SignatureAPI response body text. For creation/validation
-  // failures this is config info (e.g. "cannot parse document"), safe to capture.
-  readonly details?: string;
 
-  constructor(message: string, status: number, details?: string) {
+  constructor(message: string, status: number) {
     super(message);
     this.name = 'SignatureApiError';
     this.status = status;
-    this.details = details;
   }
 }
 
@@ -75,19 +71,11 @@ export async function signatureApiRequest<TResponse>(
   });
 
   if (!response.ok) {
-    // Capture the response body text defensively for diagnostics. For
-    // creation/validation errors this is config info (e.g. "cannot parse
-    // document"), not PII. Truncated to ~800 chars. The API key is never logged.
-    let detail = '';
-    try {
-      detail = (await response.text()).slice(0, 800);
-    } catch {
-      // Ignore body-read failures; status is still actionable.
-    }
+    // Deliberately do not include the response body in the error message; it can
+    // contain envelope/recipient PII. The status is enough to act on + audit.
     throw new SignatureApiError(
       `SignatureAPI request failed with status ${response.status}.`,
       response.status,
-      detail,
     );
   }
 

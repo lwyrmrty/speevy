@@ -77,7 +77,7 @@ const addonOnlyColors = Object.fromEntries(Object.entries(filledColors).map(([ke
 
 const withPillTypes = {
     [badgeTypes.pillColor]: {
-        common: "size-max flex items-center whitespace-nowrap rounded-full ring-1 ring-inset",
+        common: "size-max flex items-center whitespace-nowrap rounded-[5px] ring-1 ring-inset",
         styles: filledColors,
     },
     [badgeTypes.badgeColor]: {
@@ -98,7 +98,7 @@ const withPillTypes = {
 
 const withBadgeTypes = {
     [badgeTypes.pillColor]: {
-        common: "size-max flex items-center whitespace-nowrap rounded-full ring-1 ring-inset",
+        common: "size-max flex items-center whitespace-nowrap rounded-[5px] ring-1 ring-inset",
         styles: filledColors,
     },
     [badgeTypes.badgeColor]: {
@@ -126,12 +126,12 @@ export const Badge = <T extends BadgeTypes>(props: BadgeProps<T>) => {
     const colors = withPillTypes[type];
 
     const pillSizes = {
-        sm: "py-0.5 px-2 text-xs font-medium",
+        sm: "pt-[5px] pb-[4px] px-[7px] text-[0.825rem] font-semibold",
         md: "py-0.5 px-2.5 text-sm font-medium",
         lg: "py-1 px-3 text-sm font-medium",
     };
     const badgeSizes = {
-        sm: "py-0.5 px-1.5 text-xs font-medium",
+        sm: "pt-[5px] pb-[4px] px-[5px] text-[0.825rem] font-semibold",
         md: "py-0.5 px-2 text-sm font-medium",
         lg: "py-1 px-2.5 text-sm font-medium rounded-lg",
     };
@@ -159,13 +159,13 @@ export const BadgeWithDot = <T extends BadgeTypes>(props: BadgeWithDotProps<T>) 
     const colors = withBadgeTypes[type];
 
     const pillSizes = {
-        sm: "gap-1 py-0.5 pl-1.5 pr-2 text-xs font-medium",
+        sm: "gap-1 pt-[5px] pb-[4px] pl-[5px] pr-[7px] text-[0.825rem] font-semibold",
         md: "gap-1.5 py-0.5 pl-2 pr-2.5 text-sm font-medium",
         lg: "gap-1.5 py-1 pl-2.5 pr-3 text-sm font-medium",
     };
 
     const badgeSizes = {
-        sm: "gap-1 py-0.5 px-1.5 text-xs font-medium",
+        sm: "gap-1 pt-[5px] pb-[4px] px-[5px] text-[0.825rem] font-semibold",
         md: "gap-1.5 py-0.5 px-2 text-sm font-medium",
         lg: "gap-1.5 py-1 px-2.5 text-sm font-medium rounded-lg",
     };
@@ -203,8 +203,8 @@ export const BadgeWithIcon = <T extends BadgeTypes>(props: BadgeWithIconProps<T>
 
     const pillSizes = {
         sm: {
-            trailing: "gap-0.5 py-0.5 pl-2 pr-1.5 text-xs font-medium",
-            leading: "gap-0.5 py-0.5 pr-2 pl-1.5 text-xs font-medium",
+            trailing: "gap-0.5 pt-[5px] pb-[4px] pl-[7px] pr-[5px] text-[0.825rem] font-semibold",
+            leading: "gap-0.5 pt-[5px] pb-[4px] pr-[7px] pl-[5px] text-[0.825rem] font-semibold",
         },
         md: {
             trailing: "gap-1 py-0.5 pl-2.5 pr-2 text-sm font-medium",
@@ -217,8 +217,8 @@ export const BadgeWithIcon = <T extends BadgeTypes>(props: BadgeWithIconProps<T>
     };
     const badgeSizes = {
         sm: {
-            trailing: "gap-0.5 py-0.5 pl-2 pr-1.5 text-xs font-medium",
-            leading: "gap-0.5 py-0.5 pr-2 pl-1.5 text-xs font-medium",
+            trailing: "gap-0.5 pt-[5px] pb-[4px] pl-[7px] pr-[5px] text-[0.825rem] font-semibold",
+            leading: "gap-0.5 pt-[5px] pb-[4px] pr-[7px] pl-[5px] text-[0.825rem] font-semibold",
         },
         md: {
             trailing: "gap-1 py-0.5 pl-2 pr-1.5 text-sm font-medium",
@@ -259,12 +259,12 @@ export const BadgeWithFlag = <T extends BadgeTypes>(props: BadgeWithFlagProps<T>
     const colors = withPillTypes[type];
 
     const pillSizes = {
-        sm: "gap-1 py-0.5 pl-0.75 pr-2 text-xs font-medium",
+        sm: "gap-1 pt-[5px] pb-[4px] pl-[2px] pr-[7px] text-[0.825rem] font-semibold",
         md: "gap-1.5 py-0.5 pl-1 pr-2.5 text-sm font-medium",
         lg: "gap-1.5 py-1 pl-1.5 pr-3 text-sm font-medium",
     };
     const badgeSizes = {
-        sm: "gap-1 py-0.5 pl-1 pr-1.5 text-xs font-medium",
+        sm: "gap-1 pt-[5px] pb-[4px] pl-[3px] pr-[5px] text-[0.825rem] font-semibold",
         md: "gap-1.5 py-0.5 pl-1.5 pr-2 text-sm font-medium",
         lg: "gap-1.5 py-1 pl-2 pr-2.5 text-sm font-medium rounded-lg",
     };
@@ -297,12 +297,12 @@ export const BadgeWithImage = <T extends BadgeTypes>(props: BadgeWithImageProps<
     const colors = withPillTypes[type];
 
     const pillSizes = {
-        sm: "gap-1 py-0.5 pl-0.75 pr-2 text-xs font-medium",
+        sm: "gap-1 pt-[5px] pb-[4px] pl-[2px] pr-[7px] text-[0.825rem] font-semibold",
         md: "gap-1.5 py-0.5 pl-1 pr-2.5 text-sm font-medium",
         lg: "gap-1.5 py-1 pl-1.5 pr-3 text-sm font-medium",
     };
     const badgeSizes = {
-        sm: "gap-1 py-0.5 pl-1 pr-1.5 text-xs font-medium",
+        sm: "gap-1 pt-[5px] pb-[4px] pl-[3px] pr-[5px] text-[0.825rem] font-semibold",
         md: "gap-1.5 py-0.5 pl-1.5 pr-2 text-sm font-medium",
         lg: "gap-1.5 py-1 pl-2 pr-2.5 text-sm font-medium rounded-lg",
     };
@@ -343,12 +343,12 @@ export const BadgeWithButton = <T extends BadgeTypes>(props: BadgeWithButtonProp
     const colors = withPillTypes[type];
 
     const pillSizes = {
-        sm: "gap-0.5 py-0.5 pl-2 pr-0.75 text-xs font-medium",
+        sm: "gap-0.5 pt-[5px] pb-[4px] pl-[7px] pr-[2px] text-[0.825rem] font-semibold",
         md: "gap-0.5 py-0.5 pl-2.5 pr-1 text-sm font-medium",
         lg: "gap-0.5 py-1 pl-3 pr-1.5 text-sm font-medium",
     };
     const badgeSizes = {
-        sm: "gap-0.5 py-0.5 pl-1.5 pr-0.75 text-xs font-medium",
+        sm: "gap-0.5 pt-[5px] pb-[4px] pl-[5px] pr-[2px] text-[0.825rem] font-semibold",
         md: "gap-0.5 py-0.5 pl-2 pr-1 text-sm font-medium",
         lg: "gap-0.5 py-1 pl-2.5 pr-1.5 text-sm font-medium rounded-lg",
     };
@@ -369,7 +369,7 @@ export const BadgeWithButton = <T extends BadgeTypes>(props: BadgeWithButtonProp
                 className={cx(
                     "flex cursor-pointer items-center justify-center p-0.5 outline-focus-ring transition duration-100 ease-linear focus-visible:outline-2",
                     colors.styles[color].addonButton,
-                    type === "pill-color" ? "rounded-full" : "rounded-[3px]",
+                    type === "pill-color" ? "rounded-[5px]" : "rounded-[3px]",
                 )}
             >
                 <Icon className="size-3 stroke-[3px] transition-inherit-all" />

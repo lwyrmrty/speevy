@@ -279,6 +279,15 @@
     --color-utility-emerald-600: var(--color-emerald-600);
     --color-utility-emerald-700: var(--color-emerald-700);
 
+    --color-utility-teal-50: var(--color-teal-50);
+    --color-utility-teal-100: var(--color-teal-100);
+    --color-utility-teal-200: var(--color-teal-200);
+    --color-utility-teal-300: var(--color-teal-300);
+    --color-utility-teal-400: var(--color-teal-400);
+    --color-utility-teal-500: var(--color-teal-500);
+    --color-utility-teal-600: var(--color-teal-600);
+    --color-utility-teal-700: var(--color-teal-700);
+
     --color-utility-amber-50: var(--color-amber-50);
     --color-utility-amber-100: var(--color-amber-100);
     --color-utility-amber-200: var(--color-amber-200);
@@ -642,6 +651,15 @@
         --color-utility-emerald-500: var(--color-emerald-500);
         --color-utility-emerald-600: var(--color-emerald-400);
         --color-utility-emerald-700: var(--color-emerald-300);
+
+        --color-utility-teal-50: var(--color-teal-950);
+        --color-utility-teal-100: var(--color-teal-900);
+        --color-utility-teal-200: var(--color-teal-800);
+        --color-utility-teal-300: var(--color-teal-700);
+        --color-utility-teal-400: var(--color-teal-600);
+        --color-utility-teal-500: var(--color-teal-500);
+        --color-utility-teal-600: var(--color-teal-400);
+        --color-utility-teal-700: var(--color-teal-300);
 
         --color-utility-amber-50: var(--color-amber-950);
         --color-utility-amber-100: var(--color-amber-900);

@@ -20,9 +20,10 @@ type OpportunityRow = {
   slug: string;
   title: string;
   teaser: string | null;
-  status: 'potential' | 'draft' | 'active' | 'past';
+  status: 'potential' | 'coming_soon' | 'draft' | 'active' | 'closed';
   opportunity_sectors: unknown;
   stage: string | null;
+  website_url: string | null;
   minimum_investment_cents: number | string | null;
   target_allocation_cents: number | string | null;
   origination_fee_cents: number | string | null;
@@ -130,6 +131,23 @@ function normalizeSectors(value: unknown) {
 
 function getInterestOpportunity(opportunities: InterestRow['opportunities']) {
   return Array.isArray(opportunities) ? opportunities[0] : opportunities;
+}
+
+function sortOpportunitiesByTitle(opportunities: OpportunityCardRow[]) {
+  return opportunities.slice().sort((left, right) =>
+    left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }),
+  );
+}
+
+function externalUrl(value: string | null) {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `https://${trimmed}`;
 }
 
 function basisPointsToPercent(value: number | null) {
@@ -334,6 +352,47 @@ function CompactOpportunityRow({
   );
 }
 
+function ClosedOpportunityCard({ opportunity }: { opportunity: OpportunityCardRow }) {
+  const websiteHref = externalUrl(opportunity.website_url);
+  const detailHref = `/opportunities/${opportunity.slug}`;
+
+  const cardContent = (
+    <div className="cardlogo-row">
+      <div className="cardlogo-logo nopull closed-logo">
+        <img
+          src={opportunity.logoUrl ?? '/webflow/images/YJnP6Zn5_400x400.jpg'}
+          loading="lazy"
+          alt=""
+          className="fullimage"
+        />
+      </div>
+      <div className="cardtitle-row">
+        <div className="cardtitle">{opportunity.title}</div>
+        <div className="cardsubtitle">{opportunity.teaser}</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="cardlist-item">
+      {websiteHref ? (
+        <a
+          href={websiteHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="cardrow w-inline-block"
+        >
+          {cardContent}
+        </a>
+      ) : (
+        <Link href={detailHref} className="cardrow w-inline-block">
+          {cardContent}
+        </Link>
+      )}
+    </div>
+  );
+}
+
 function InterestedOpportunities({
   interests,
 }: {
@@ -471,6 +530,7 @@ export default async function OpportunitiesHomePage() {
       status,
       opportunity_sectors,
       stage,
+      website_url,
       minimum_investment_cents,
       target_allocation_cents,
       origination_fee_cents,
@@ -479,7 +539,10 @@ export default async function OpportunitiesHomePage() {
       logo_storage_key,
       thumbnail_storage_key
     `)
-    .in('status', ['active', 'potential', 'past'])
+    // Match insider RLS (`status <> 'draft'`). Avoid `.in()` with enum values that
+    // may not exist yet (e.g. `coming_soon` before migration 0019) — PostgREST
+    // rejects invalid enum literals and the page would silently show empty sections.
+    .neq('status', 'draft')
     .is('archived_at', null)
     .order('created_at', { ascending: false });
 
@@ -525,13 +588,21 @@ export default async function OpportunitiesHomePage() {
   const displayName = profile?.full_name || lp?.full_name || profile?.email || user.email;
   const firstName = (profile?.full_name || lp?.full_name)?.trim().split(/\s+/)[0] ?? 'there';
   const interestedSectors = normalizeSectors(lp?.sectors_interested);
-  const activeOpportunities = cards.filter((opportunity) => opportunity.status === 'active');
-  const potentialOpportunities = cards.filter((opportunity) => opportunity.status === 'potential');
-  const pastOpportunities = cards.filter((opportunity) => opportunity.status === 'past');
+  const activeOpportunities = sortOpportunitiesByTitle(
+    cards.filter((opportunity) => opportunity.status === 'active'),
+  );
+  const potentialOpportunities = sortOpportunitiesByTitle(
+    cards.filter((opportunity) =>
+      opportunity.status === 'potential' || opportunity.status === 'coming_soon',
+    ),
+  );
+  const closedOpportunities = sortOpportunitiesByTitle(
+    cards.filter((opportunity) => opportunity.status === 'closed'),
+  );
   const opportunityNavItems = [
     { href: '#active', label: 'Active Opportunities' },
     { href: '#potential', label: 'Potential Opportunities' },
-    { href: '#past', label: 'Past Opportunities' },
+    { href: '#closed', label: 'Closed Opportunities' },
   ];
 
   return (
@@ -610,24 +681,24 @@ export default async function OpportunitiesHomePage() {
                 <div className="cardlist nomargin">
                   {potentialOpportunities.length > 0
                     ? potentialOpportunities.map((opportunity) => (
-                      <CompactOpportunityRow key={opportunity.id} opportunity={opportunity} />
+                      <CompactOpportunityRow key={opportunity.id} opportunity={opportunity} disabled />
                     ))
                     : <EmptyState label="Potential Opportunities" />}
                 </div>
               </div>
-              <div id="past" className="contentblock">
+              <div id="closed" className="contentblock">
                 <div className="tableheader">
                   <div>
-                    <div className="pagetitle">Past Opportunities</div>
-                    <div className="pagesubtitle">Past opportunities that have closed. However, they could come again in the future.</div>
+                    <div className="pagetitle">Closed Opportunities</div>
+                    <div className="pagesubtitle">Opportunities that have closed. However, they could come again in the future.</div>
                   </div>
                 </div>
-                <div className="cardlist nomargin">
-                  {pastOpportunities.length > 0
-                    ? pastOpportunities.map((opportunity) => (
-                      <CompactOpportunityRow key={opportunity.id} opportunity={opportunity} disabled />
+                <div className="cardlist nomargin closed-grid">
+                  {closedOpportunities.length > 0
+                    ? closedOpportunities.map((opportunity) => (
+                      <ClosedOpportunityCard key={opportunity.id} opportunity={opportunity} />
                     ))
-                    : <EmptyState label="Past Opportunities" />}
+                    : <EmptyState label="Closed Opportunities" />}
                 </div>
               </div>
             </div>

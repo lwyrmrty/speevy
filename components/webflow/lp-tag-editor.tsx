@@ -26,6 +26,7 @@ const SWATCH_HEX: Record<TagColor, string> = {
   purple: '#7a5af8',
   pink: '#ee46bc',
   orange: '#ef6820',
+  teal: '#14b8a6',
 };
 
 export function LpTagBadge({ tag }: { tag: Tag }) {

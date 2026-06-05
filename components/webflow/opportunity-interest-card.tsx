@@ -60,25 +60,30 @@ export function OpportunityInterestCard({
   isGuest?: boolean;
   minimumInvestmentCents: number;
   opportunityId: string;
-  variant?: 'standard' | 'past';
+  variant?: 'standard' | 'closed';
 }) {
   const { showToast } = useToast();
   const [interested, setInterested] = useState(initialInterested);
   const [amount, setAmount] = useState(centsToCurrencyInput(initialAmountCents));
   const [email, setEmail] = useState('');
-  const [hasStoredInterest, setHasStoredInterest] = useState(initialAmountCents !== null);
+  const [hasStoredInterest, setHasStoredInterest] = useState(initialInterested);
   const [saving, setSaving] = useState(false);
-  const isPast = variant === 'past';
+  const isClosed = variant === 'closed';
   const amountCents = moneyToCents(amount);
   const belowMinimum = interested && amount && amountCents < minimumInvestmentCents;
-  const canConfirm = (isPast || amountCents >= minimumInvestmentCents) && !saving;
+  const showAmountDrawer = interested && !isClosed;
+  const showSubmitButton = !isClosed && (interested || hasStoredInterest);
+  const canConfirm = !saving && (interested
+    ? isClosed || amountCents >= minimumInvestmentCents
+    : hasStoredInterest);
 
-  async function savePastInterest() {
+  async function saveClosedInterest() {
     setSaving(true);
 
     const result = await saveOpportunityInterest({
       opportunityId,
       amountCents: null,
+      interested: true,
     });
 
     setSaving(false);
@@ -102,8 +107,8 @@ export function OpportunityInterestCard({
           const nextInterested = !interested;
           setInterested(nextInterested);
 
-          if (isPast && nextInterested) {
-            void savePastInterest();
+          if (isClosed && nextInterested) {
+            void saveClosedInterest();
           }
         }}
       >
@@ -118,7 +123,7 @@ export function OpportunityInterestCard({
           )}
         </div>
       </button>
-      {interested && !isPast ? (
+      {showAmountDrawer ? (
         <div className="interestamount-drawer">
           <div className="interestedamount-content">
             {isGuest ? (
@@ -155,7 +160,7 @@ export function OpportunityInterestCard({
           </div>
         </div>
       ) : null}
-      {interested && !isPast ? (
+      {showSubmitButton ? (
         <button
           type="button"
           className="confirmbutton w-inline-block"
@@ -165,14 +170,21 @@ export function OpportunityInterestCard({
 
             const result = await saveOpportunityInterest({
               opportunityId,
-              amountCents,
+              amountCents: interested ? amountCents : null,
+              interested,
             });
 
             setSaving(false);
 
             if (result.status === 'success') {
-              setHasStoredInterest(true);
-              showToast({ status: 'success', text: 'Interest saved.' });
+              if (interested) {
+                setHasStoredInterest(true);
+                showToast({ status: 'success', text: 'Interest saved.' });
+                return;
+              }
+
+              setHasStoredInterest(false);
+              showToast({ status: 'success', text: 'Interest withdrawn.' });
               return;
             }
 

@@ -1,4 +1,4 @@
-export type OpportunityStatus = 'potential' | 'upcoming' | 'active' | 'past';
+export type OpportunityStatus = 'potential' | 'coming_soon' | 'upcoming' | 'active' | 'closed';
 
 export type Opportunity = {
   id: string;

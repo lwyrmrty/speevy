@@ -120,8 +120,8 @@ Do NOT build a generic block editor. Do NOT allow free-form layout.
 Do NOT add new section types without an explicit request.
 
 ## Opportunity Statuses
-`potential` | `upcoming` | `active` | `past`
-LPs can indicate interest on anything except `past`.
+`potential` | `upcoming` | `active` | `closed`
+LPs can indicate interest on anything except `closed` (closed deals use a lightweight "Interested?" signal only).
 
 ## Interest Flow
 Two-step: (1) LP indicates interest, (2) LP provides dollar amount.
@@ -130,7 +130,7 @@ Interest is one row per LP per opportunity, transitioning through statuses.
 
 ## Access Control
 - Approved LPs are "insiders": an LP with `lps.status = 'approved'` can view
-  EVERY opportunity whose `status <> 'draft'` (potential/active/past) — no
+  EVERY opportunity whose `status <> 'draft'` (potential/active/closed) — no
   per-opportunity `opportunity_access` grant or `visible_to_all_approved_lps`
   flag required. `status = 'draft'` is the single hide signal; `published_at`
   no longer gates visibility (it is still maintained but is not consulted).

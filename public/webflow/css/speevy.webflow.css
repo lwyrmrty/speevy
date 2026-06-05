@@ -1229,7 +1229,7 @@ strong {
   margin-bottom: 5px;
 }
 
-.past-hero-meta-row {
+.closed-hero-meta-row {
   grid-column-gap: 5px;
   grid-row-gap: 5px;
   flex-wrap: wrap;
@@ -1285,6 +1285,7 @@ strong {
 
 .contentsection {
   border-bottom: 1.5px solid var(--border);
+  width: 100%;
   padding: 60px 40px 50px 5px;
 }
 
@@ -1880,6 +1881,7 @@ strong {
 
 .teamlist {
   flex-flow: wrap;
+  width: 100%;
   margin-bottom: 25px;
   margin-left: -5px;
   margin-right: -5px;
@@ -2027,6 +2029,11 @@ strong {
   align-items: center;
   margin-bottom: 10px;
   display: flex;
+}
+
+.teamhead-row > div:last-child {
+  flex: 1;
+  min-width: 0;
 }
 
 .socialsrow {
@@ -2407,7 +2414,7 @@ strong {
   color: #c38b31;
 }
 
-.cellstatus.past {
+.cellstatus.closed {
   color: #c75639;
 }
 
@@ -3962,6 +3969,49 @@ strong {
   inset: 0%;
 }
 
+#closed .cardlist.closed-grid {
+  grid-column-gap: 5px;
+  grid-row-gap: 0;
+  grid-template-columns: 1fr 1fr;
+  display: grid;
+}
+
+#closed .cardlist.closed-grid .cardlist-item {
+  width: auto;
+}
+
+#closed .cardlist.closed-grid > .cardlist-item:only-child {
+  grid-column: 1 / -1;
+}
+
+#closed .cardrow {
+  align-items: flex-start;
+}
+
+#closed .cardlist-item .cardrow .cardlogo-row {
+  grid-column-gap: 13px;
+  grid-row-gap: 13px;
+  align-items: flex-start;
+}
+
+#closed .cardlist-item .cardrow .cardlogo-row .cardlogo-logo.closed-logo {
+  width: 54px;
+  height: 54px;
+}
+
+#closed .cardlist-item .cardrow .cardlogo-row .cardtitle-row {
+  justify-content: flex-start;
+  grid-column-gap: 4px;
+  grid-row-gap: 4px;
+  padding-top: 3px;
+}
+
+#closed .cardlist-item .cardrow .cardlogo-row .cardtitle {
+  font-size: calc(19.11px * 0.85 * 1.1);
+  margin: 0;
+  margin-top: 4px;
+}
+
 @media screen and (max-width: 991px) {
   .pagecontent {
     flex-flow: column;
@@ -4002,12 +4052,21 @@ strong {
     padding-right: 5px;
   }
 
+  .teamitem, .documentitem {
+    width: 100%;
+    padding: 2.5px 0;
+  }
+
   .loginimage-side {
     display: none;
   }
 
   .logincontent {
     width: 100%;
+  }
+
+  #closed .cardlist.closed-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -4033,11 +4092,6 @@ strong {
     justify-content: flex-start;
     align-items: center;
     width: 120px;
-  }
-
-  .teamitem, .documentitem {
-    width: 100%;
-    padding: 2.5px 0;
   }
 
   .admin-wrapper.tall {

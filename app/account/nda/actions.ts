@@ -150,12 +150,8 @@ async function ensureAccountNdaEnvelope(
     });
   } catch (error) {
     if (error instanceof SignatureApiError) {
-      // TEMP DIAGNOSTIC — remove after NDA envelope debugging.
-      console.error('[NDA-DIAG] account createEnvelope failed', error.status, error.details ?? '');
-      return {
-        status: 'error',
-        message: `Could not start the NDA signing ceremony. (ref ${error.status})`,
-      };
+      // Do not surface PII-bearing provider detail; status is enough to act on.
+      return { status: 'error', message: 'Could not start the NDA signing ceremony.' };
     }
     throw error;
   }
@@ -284,6 +280,100 @@ export async function createAccountNdaEnvelopeForLp(
     { id: lp.id, email: lp.email, fullName: lp.full_name },
     { profileId: user.id, role: 'admin' },
   );
+}
+
+export type ResetAccountNdaResult =
+  | { status: 'success'; message: string }
+  | { status: 'error'; message: string };
+
+const resetAccountNdaSchema = z.object({
+  lpId: z.string().uuid(),
+});
+
+/**
+ * Admin-only: reset a specific investor's account NDA so the next ceremony load
+ * regenerates a fresh envelope from the current account-default template.
+ *
+ * `ensureAccountNdaEnvelope` reuses an existing (immutable) SignatureAPI
+ * envelope while the account_ndas row is in a signable status (sent/viewed), so
+ * after a template/document change an investor who already started keeps seeing
+ * the stale document. Deleting the in-flight account_ndas row clears that reuse
+ * path. A signed row is never destroyed (it is the executed record).
+ */
+export async function resetAccountNdaForLp(
+  payload: z.input<typeof resetAccountNdaSchema>,
+): Promise<ResetAccountNdaResult> {
+  const serverSupabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await serverSupabase.auth.getUser();
+
+  if (!user) {
+    return { status: 'error', message: 'Sign in as an admin to reset an account NDA.' };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (profile?.role !== 'admin') {
+    return { status: 'error', message: 'Only admins can reset an account NDA.' };
+  }
+
+  const parsed = resetAccountNdaSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { status: 'error', message: 'Select a valid investor.' };
+  }
+
+  const { lpId } = parsed.data;
+
+  const { data: existing } = await supabase
+    .from('account_ndas')
+    .select('id, status')
+    .eq('lp_id', lpId)
+    .maybeSingle();
+
+  if (!existing) {
+    // Nothing in flight: the next ceremony load already creates a fresh envelope
+    // from the current account-default template, so treat this as a no-op.
+    return { status: 'success', message: 'No account NDA to reset — a fresh one will be issued.' };
+  }
+
+  if (existing.status === 'signed') {
+    return {
+      status: 'error',
+      message: 'This investor has already signed the account NDA, so it cannot be reset.',
+    };
+  }
+
+  const { error: deleteError } = await supabase
+    .from('account_ndas')
+    .delete()
+    .eq('id', existing.id)
+    .neq('status', 'signed');
+
+  if (deleteError) {
+    return { status: 'error', message: 'Could not reset the NDA. Please try again.' };
+  }
+
+  // No dedicated reset enum value exists; reuse the closest admin NDA write
+  // action and record the reset intent + lp_id (no other PII) in metadata.
+  await supabase.from('audit_log').insert({
+    actor_profile_id: user.id,
+    actor_role: 'admin',
+    action: 'nda.sent',
+    entity_type: 'account_nda',
+    entity_id: null,
+    metadata: { kind: 'account', operation: 'reset', lp_id: lpId },
+  });
+
+  return {
+    status: 'success',
+    message: 'Account NDA reset. The investor will receive a fresh document on their next visit.',
+  };
 }
 
 /**

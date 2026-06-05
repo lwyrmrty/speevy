@@ -7,6 +7,7 @@ import {
   archiveNdaTemplate,
   createNdaTemplate,
   setAccountDefaultNdaTemplate,
+  updateNdaTemplate,
   type NdaTemplateSummary,
 } from '@/app/admin/nda-templates/actions';
 
@@ -31,6 +32,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [sourceFileUrl, setSourceFileUrl] = useState('');
@@ -38,13 +40,26 @@ export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
   const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
 
   const resetForm = () => {
+    setEditingId(null);
     setName('');
     setDescription('');
     setSourceFileUrl('');
     setFieldsConfigJson(DEFAULT_FIELDS_CONFIG_JSON);
   };
 
-  const handleCreate = () => {
+  const handleEdit = (template: NdaTemplateSummary) => {
+    setMessage(null);
+    setEditingId(template.id);
+    setName(template.name);
+    setDescription(template.description ?? '');
+    setSourceFileUrl(template.sourceFileUrl);
+    setFieldsConfigJson(JSON.stringify(template.fieldsConfig ?? {}, null, 2));
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleSubmit = () => {
     setMessage(null);
 
     const trimmedConfig = fieldsConfigJson.trim();
@@ -64,13 +79,23 @@ export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
       fieldsConfig = parsed;
     }
 
+    const currentEditingId = editingId;
+
     startTransition(async () => {
-      const result = await createNdaTemplate({
-        name,
-        description: description || undefined,
-        sourceFileUrl,
-        ...(fieldsConfig ? { fieldsConfig } : {}),
-      });
+      const result = currentEditingId
+        ? await updateNdaTemplate({
+            id: currentEditingId,
+            name,
+            description: description || undefined,
+            sourceFileUrl,
+            ...(fieldsConfig ? { fieldsConfig } : {}),
+          })
+        : await createNdaTemplate({
+            name,
+            description: description || undefined,
+            sourceFileUrl,
+            ...(fieldsConfig ? { fieldsConfig } : {}),
+          });
 
       if (result.status === 'success') {
         resetForm();
@@ -114,7 +139,7 @@ export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
     <div>
       <div className="cardblock">
         <div>
-          <div className="sideheading">Add NDA document</div>
+          <div className="sideheading">{editingId ? 'Edit NDA document' : 'Add NDA document'}</div>
         </div>
         <div className="formfields-block">
           <div className="fieldlabel">Name</div>
@@ -158,16 +183,27 @@ export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
             [[signer_signs_here]]).
           </div>
         </div>
-        <div className="spacetop" style={{ marginTop: 14 }}>
+        <div className="spacetop alignrow aligncenter" style={{ marginTop: 14, gap: 10 }}>
           <button
             type="button"
             className="button short w-inline-block"
-            onClick={handleCreate}
+            onClick={handleSubmit}
             disabled={isPending}
             style={{ border: 'none', cursor: isPending ? 'not-allowed' : 'pointer' }}
           >
-            <div>{isPending ? 'Saving…' : 'Add document'}</div>
+            <div>{isPending ? 'Saving…' : editingId ? 'Save changes' : 'Add document'}</div>
           </button>
+          {editingId ? (
+            <button
+              type="button"
+              className="actionlinks w-inline-block"
+              onClick={resetForm}
+              disabled={isPending}
+              style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              <div>Cancel edit</div>
+            </button>
+          ) : null}
         </div>
         {message ? (
           <div
@@ -230,15 +266,26 @@ export function NdaTemplatesManager({ templates }: NdaTemplatesManagerProps) {
                 )}
               </div>
               <div className="tablecell actions">
-                <button
-                  type="button"
-                  className="actionlinks w-inline-block"
-                  onClick={() => handleArchive(template.id)}
-                  disabled={isPending}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-                >
-                  <div>Archive</div>
-                </button>
+                <div className="alignrow aligncenter" style={{ gap: 12 }}>
+                  <button
+                    type="button"
+                    className="actionlinks w-inline-block"
+                    onClick={() => handleEdit(template)}
+                    disabled={isPending}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    <div>Edit</div>
+                  </button>
+                  <button
+                    type="button"
+                    className="actionlinks w-inline-block"
+                    onClick={() => handleArchive(template.id)}
+                    disabled={isPending}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+                  >
+                    <div>Archive</div>
+                  </button>
+                </div>
               </div>
             </div>
           ))

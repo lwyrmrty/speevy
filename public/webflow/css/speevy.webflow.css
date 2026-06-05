@@ -1839,17 +1839,19 @@ strong {
   color: var(--slate);
   letter-spacing: .2em;
   text-transform: uppercase;
-  grid-template-columns: repeat(4, max-content);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 280vmax;
+  height: 280vmax;
   gap: 68px 88px;
-  min-width: 150%;
-  min-height: 150%;
-  margin-top: -12%;
-  margin-left: -18%;
   font-size: 20px;
   font-weight: 700;
   line-height: 1em;
-  display: grid;
-  transform: rotate(-18deg);
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  transform: translate(-50%, -50%) rotate(-18deg);
 }
 
 .page-watermark-grid span {

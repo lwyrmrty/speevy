@@ -10,6 +10,8 @@ import {
   type UpdateInvestorResult,
 } from '@/app/admin/investors/actions';
 import { resetAccountNdaForLp } from '@/app/account/nda/actions';
+import { Badge } from '@/components/base/badges/badges';
+import type { BadgeColors } from '@/components/base/badges/badge-types';
 import { LpTagBadge, LpTagEditor } from '@/components/webflow/lp-tag-editor';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import {
@@ -66,43 +68,53 @@ function kindLabel(kind: AdminInvestorRow['kind']) {
   return kind === 'outsider' ? 'Outsider' : 'Insider';
 }
 
-function kindClass(kind: AdminInvestorRow['kind']) {
-  return kind === 'outsider' ? 'cellstatus potential' : 'cellstatus';
+function kindBadgeColor(kind: AdminInvestorRow['kind']): BadgeColors {
+  return kind === 'outsider' ? 'gray' : 'success';
 }
 
 function KindBadge({ kind }: { kind: AdminInvestorRow['kind'] }) {
-  return <div className={kindClass(kind)}>{kindLabel(kind)}</div>;
+  return (
+    <Badge type="pill-color" size="sm" color={kindBadgeColor(kind)}>
+      {kindLabel(kind)}
+    </Badge>
+  );
 }
 
 // Collapses the underlying LP lifecycle status into the two states admins
 // care about on this page (approved vs. still pending), keeping "Rejected"
 // distinct so a rejected investor is never mislabeled as merely pending.
-function insiderStatusBadge(status: AdminInvestorRow['status']) {
+function insiderStatusBadge(status: AdminInvestorRow['status']): {
+  label: string;
+  color: BadgeColors;
+  ariaLabel: string;
+} {
   if (status === 'approved') {
-    return { word: 'Approved', colorClass: 'cellstatus', dimWord: true };
+    return { label: 'Insider', color: 'success', ariaLabel: 'Insider, approved' };
   }
 
   if (status === 'rejected') {
-    return { word: 'Rejected', colorClass: 'cellstatus past', dimWord: false };
+    return { label: 'Insider', color: 'error', ariaLabel: 'Insider, rejected' };
   }
 
   if (status === 'removed') {
-    return { word: 'Removed', colorClass: 'cellstatus past', dimWord: false };
+    return { label: 'Insider', color: 'error', ariaLabel: 'Insider, removed' };
   }
 
   // invited | onboarding | pending_review
-  return { word: 'Pending', colorClass: 'cellstatus draft', dimWord: false };
+  return { label: 'Insider', color: 'warning', ariaLabel: 'Insider, pending' };
 }
 
 function InsiderStatusBadge({ status }: { status: AdminInvestorRow['status'] }) {
-  const { word, colorClass, dimWord } = insiderStatusBadge(status);
+  const { label, color, ariaLabel } = insiderStatusBadge(status);
 
   return (
-    <div className={colorClass}>
-      <span style={{ opacity: 0.5 }}>Insider (</span>
-      <span style={dimWord ? { opacity: 0.5 } : undefined}>{word}</span>
-      <span style={{ opacity: 0.5 }}>)</span>
-    </div>
+    <span role="status" aria-label={ariaLabel} title={ariaLabel}>
+      <span aria-hidden="true">
+        <Badge type="pill-color" size="sm" color={color}>
+          {label}
+        </Badge>
+      </span>
+    </span>
   );
 }
 
@@ -114,6 +126,24 @@ function InvestorStatusBadge({ investor }: { investor: AdminInvestorRow }) {
   return <InsiderStatusBadge status={investor.status} />;
 }
 
+function accountNdaAriaLabel(status: NonNullable<AdminInvestorRow['accountNda']>['status']) {
+  return status === 'signed' ? 'NDA, signed' : 'NDA, pending';
+}
+
+function accountNdaBadgeColor(
+  status: NonNullable<AdminInvestorRow['accountNda']>['status'],
+): BadgeColors {
+  if (status === 'signed') {
+    return 'success';
+  }
+
+  if (status === 'pending') {
+    return 'warning';
+  }
+
+  return 'gray';
+}
+
 // Derived account-NDA indicator. Signed → green; sent-but-not-signed → "Pending";
 // nothing rendered when no account NDA has been sent (keeps rows uncluttered).
 function AccountNdaBadge({ accountNda }: { accountNda: AdminInvestorRow['accountNda'] }) {
@@ -121,11 +151,17 @@ function AccountNdaBadge({ accountNda }: { accountNda: AdminInvestorRow['account
     return null;
   }
 
-  if (accountNda.status === 'signed') {
-    return <div className="cellstatus">NDA Signed</div>;
-  }
+  const ariaLabel = accountNdaAriaLabel(accountNda.status);
 
-  return <div className="cellstatus draft">NDA Pending</div>;
+  return (
+    <span role="status" aria-label={ariaLabel} title={ariaLabel}>
+      <span aria-hidden="true">
+        <Badge type="pill-color" size="sm" color={accountNdaBadgeColor(accountNda.status)}>
+          NDA
+        </Badge>
+      </span>
+    </span>
+  );
 }
 
 function CheckIcon() {

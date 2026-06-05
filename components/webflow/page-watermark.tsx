@@ -12,7 +12,7 @@ export function PageWatermark({ email }: PageWatermarkProps) {
   return (
     <div className="page-watermark" aria-hidden="true">
       <div className="page-watermark-grid">
-        {Array.from({ length: 64 }).map((_, index) => (
+        {Array.from({ length: 400 }).map((_, index) => (
           <span key={index}>{watermarkText}</span>
         ))}
       </div>

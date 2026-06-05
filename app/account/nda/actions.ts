@@ -150,8 +150,12 @@ async function ensureAccountNdaEnvelope(
     });
   } catch (error) {
     if (error instanceof SignatureApiError) {
-      // Do not surface PII-bearing provider detail; status is enough to act on.
-      return { status: 'error', message: 'Could not start the NDA signing ceremony.' };
+      // TEMP DIAGNOSTIC — remove after NDA envelope debugging.
+      console.error('[NDA-DIAG] account createEnvelope failed', error.status, error.details ?? '');
+      return {
+        status: 'error',
+        message: `Could not start the NDA signing ceremony. (ref ${error.status})`,
+      };
     }
     throw error;
   }

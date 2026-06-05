@@ -1,123 +1,161 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { useRouter } from 'next/navigation';
 
 import {
-  getAccountNdaCeremonyForOutsider,
+  getOutsiderAccountNdaSigned,
   type AccountNdaEnvelopeResult,
 } from '@/app/account/nda/actions';
 import { AccountNdaCeremony } from '@/components/webflow/account-nda-ceremony';
 
-// Surfaces the SAME account-level NDA to an outsider who has unlocked a
-// password-gated opportunity. It is informational (no new automatic gate): we
-// only prompt while it is not yet signed, and the prompt is dismissible.
+// Hard NDA gate shown to an outsider who unlocked a password-gated opportunity
+// but has NOT yet signed Harpoon Ventures' standard account-level NDA. It fully
+// replaces the page (no opportunity title, teaser, or body) using the same
+// split-panel ceremony layout as the insider onboarding step. The server is the
+// authority: it only renders this gate while account_ndas.status !== 'signed',
+// so there is no client-side "Later"/dismiss escape hatch.
 //
-// The ceremony envelope is created lazily — only when the outsider opens the
-// modal — so a casual page view does not mint an envelope. The lp_id is resolved
-// server-side from the opportunity access cookie. See docs/nda-gate-design.md
-// §4B.5.
+// On the in-iframe completion cue we poll a read-only server action (the
+// SignatureAPI webhook is the real source of truth and may lag a few seconds),
+// then router.refresh() so the now-signed outsider lands on the opportunity with
+// NO admin approval. See docs/nda-gate-design.md §4B.5.
 
-export function OutsiderAccountNda({ opportunityId }: { opportunityId: string }) {
-  const [dismissed, setDismissed] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<AccountNdaEnvelopeResult | null>(null);
+const POLL_INTERVAL_MS = 2_000;
+const SLOW_AFTER_ATTEMPTS = 8; // ~16s before we soften the copy
+const MAX_ATTEMPTS = 45; // ~90s before we stop auto-polling
 
-  // Suppress the prompt for this browser session once the account NDA is known
-  // to be signed already (keyed by opportunity is fine — the NDA is per-LP).
-  const sessionKey = 'speevy_account_nda_signed';
+function FinalizingPanel({ slow, onContinue }: { slow: boolean; onContinue: () => void }) {
+  return (
+    <div className="loginsubheader" role="status" aria-live="polite">
+      <strong className="fullcolor">Finalizing your signature…</strong>
+      <br />
+      {slow
+        ? "This is taking a little longer than usual. You can keep waiting, or continue once it's ready."
+        : 'One moment while we confirm your signed NDA.'}
+      {slow ? (
+        <div style={{ marginTop: '16px' }}>
+          <button type="button" className="button short w-inline-block" onClick={onContinue}>
+            <div>Continue to opportunity</div>
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
-  useEffect(() => {
-    if (typeof window !== 'undefined' && window.sessionStorage.getItem(sessionKey) === '1') {
-      setDismissed(true);
-    }
+export function OutsiderNdaGate({
+  result,
+  opportunityId,
+}: {
+  result: AccountNdaEnvelopeResult;
+  opportunityId: string;
+}) {
+  const router = useRouter();
+  const [finalizing, setFinalizing] = useState(false);
+  const [slow, setSlow] = useState(false);
+  const startedRef = useRef(false);
+
+  const beginFinalizing = useCallback(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    setFinalizing(true);
   }, []);
 
-  async function handleOpen() {
-    setOpen(true);
-    if (result || loading) return;
+  useEffect(() => {
+    if (!finalizing) return undefined;
 
-    setLoading(true);
-    const next = await getAccountNdaCeremonyForOutsider(opportunityId);
-    setResult(next);
-    setLoading(false);
+    let cancelled = false;
+    let attempts = 0;
 
-    if (next.status === 'already_signed') {
-      window.sessionStorage.setItem(sessionKey, '1');
-      setOpen(false);
-      setDismissed(true);
-    } else if (next.status === 'skipped') {
-      // Nothing to sign; quietly stand down.
-      setOpen(false);
-      setDismissed(true);
+    async function poll() {
+      while (!cancelled && attempts < MAX_ATTEMPTS) {
+        attempts += 1;
+        if (attempts >= SLOW_AFTER_ATTEMPTS && !cancelled) {
+          // `slow` is not an effect dependency, so this never restarts the loop.
+          setSlow(true);
+        }
+
+        try {
+          const signed = await getOutsiderAccountNdaSigned(opportunityId);
+          if (cancelled) return;
+          if (signed) {
+            // The server gate now allows the full opportunity render.
+            router.refresh();
+            return;
+          }
+        } catch {
+          // Transient failure (network/provider) — keep polling.
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      }
     }
-  }
 
-  if (dismissed) {
-    return null;
-  }
+    void poll();
+    return () => {
+      cancelled = true;
+    };
+  }, [finalizing, opportunityId, router]);
 
   return (
-    <>
-      <div className="speevy-form-message" role="note" style={{ marginBottom: '12px' }}>
-        <div className="alignrow aligncenter" style={{ gap: '10px', flexWrap: 'wrap' }}>
-          <div>
-            Please review and sign Harpoon Ventures&#x27; standard NDA to complete
-            your access.
+    <div className="adminpage-wrapper nopadding">
+      <div className="admin-wrapper tall">
+        <div className="logincontent">
+          <div className="loginblock">
+            <div className="loginform-wrapper" style={{ maxWidth: '720px' }}>
+              <a href="/" className="w-inline-block">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/webflow/images/Harpoon-Logo.png"
+                  loading="lazy"
+                  sizes="(max-width: 931px) 100vw, 931px"
+                  srcSet="/webflow/images/Harpoon-Logo-p-500.png 500w, /webflow/images/Harpoon-Logo-p-800.png 800w, /webflow/images/Harpoon-Logo.png 931w"
+                  alt="Harpoon Ventures"
+                  className="loginlogo"
+                />
+              </a>
+              <div className="formblock w-form">
+                <div className="loginform">
+                  <div>
+                    <div className="loginheader">Review &amp; sign your NDA</div>
+                    <div className="loginsubheader">
+                      Before viewing this opportunity, please review and sign
+                      Harpoon Ventures&#x27; standard NDA. Once signed, you&#x27;ll
+                      go straight to the opportunity — no further approval needed.
+                    </div>
+                  </div>
+                  <div className="loginsubheader">
+                    Already have access? <a href="/login" className="inlinelink">Log in here</a>.
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="alignrow aligncenter" style={{ gap: '8px' }}>
-            <button type="button" className="button short w-inline-block" onClick={handleOpen}>
-              <div>Review &amp; Sign NDA</div>
-            </button>
-            <button
-              type="button"
-              className="button short secondary w-inline-block"
-              onClick={() => setDismissed(true)}
-            >
-              <div>Later</div>
-            </button>
+        </div>
+        <div
+          className="loginimage-side"
+          style={{
+            // Inline styles override the Webflow `display: none` this panel gets
+            // on small screens so the signing iframe stays usable on mobile,
+            // where it stacks below the intro copy.
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#e9f2fb',
+            padding: '30px',
+          }}
+        >
+          <div style={{ width: '100%', maxWidth: '620px' }}>
+            {finalizing ? (
+              <FinalizingPanel slow={slow} onContinue={() => router.refresh()} />
+            ) : (
+              <AccountNdaCeremony result={result} variant="outsider" onCompleted={beginFinalizing} />
+            )}
           </div>
         </div>
       </div>
-
-      {open ? (
-        <div
-          className="speevy-slideout-layer document-viewer-layer"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Sign your NDA"
-        >
-          <button
-            type="button"
-            className="speevy-slideout-backdrop"
-            aria-label="Close NDA"
-            onClick={() => setOpen(false)}
-          />
-          <div className="speevy-slideout-panel document-viewer-panel">
-            <div className="speevy-slideout-header">
-              <div>
-                <div className="pagetitle small">Standard NDA</div>
-                <div className="dimsmall">Review and sign to complete your access.</div>
-              </div>
-              <button
-                type="button"
-                className="speevy-slideout-close"
-                aria-label="Close"
-                onClick={() => setOpen(false)}
-              >
-                <div>×</div>
-              </button>
-            </div>
-            <div className="document-viewer-body" style={{ padding: '16px' }}>
-              {loading || !result ? (
-                <div className="loginsubheader">Loading your NDA…</div>
-              ) : (
-                <AccountNdaCeremony result={result} variant="outsider" />
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </>
+    </div>
   );
 }

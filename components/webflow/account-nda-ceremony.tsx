@@ -54,9 +54,15 @@ function ThanksState({ variant }: { variant: Variant }) {
 export function AccountNdaCeremony({
   result,
   variant,
+  onCompleted,
 }: {
   result: AccountNdaEnvelopeResult;
   variant: Variant;
+  // When provided, the in-iframe completion cue is handed to the parent instead
+  // of flipping to the internal "thanks" state. The outsider hard gate uses this
+  // to start polling the server (webhook source of truth) and then advance the
+  // signer to the opportunity. Omitted by the informational onboarding usage.
+  onCompleted?: () => void;
 }) {
   const [signed, setSigned] = useState(result.status === 'already_signed');
   const ceremonyUrl = result.status === 'success' ? buildEmbeddedUrl(result.ceremonyUrl) : null;
@@ -66,13 +72,17 @@ export function AccountNdaCeremony({
 
     function handleMessage(event: MessageEvent) {
       if (looksLikeCompletion(event.data)) {
-        setSigned(true);
+        if (onCompleted) {
+          onCompleted();
+        } else {
+          setSigned(true);
+        }
       }
     }
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [ceremonyUrl]);
+  }, [ceremonyUrl, onCompleted]);
 
   if (signed) {
     return <ThanksState variant={variant} />;

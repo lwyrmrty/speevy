@@ -53,7 +53,6 @@ export default async function OnboardingNdaPage({
                         your information and be in touch after that.
                       </div>
                     </div>
-                    <AccountNdaCeremony result={result} variant="onboarding" />
                     <div className="loginsubheader">
                       Already have access? <a href="/login" className="inlinelink">Log in here</a>.
                     </div>
@@ -62,15 +61,21 @@ export default async function OnboardingNdaPage({
               </div>
             </div>
           </div>
-          <div className="loginimage-side">
-            <div className="loginimage">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/webflow/images/ivan-bandura-5cwigXmGWTo-unsplash.png"
-                loading="lazy"
-                alt=""
-                className="full-image"
-              />
+          <div
+            className="loginimage-side"
+            style={{
+              // Inline styles override the Webflow `display: none` this panel gets
+              // on small screens (inline beats media-query rules), so the signing
+              // iframe stays usable on mobile, where it stacks below the intro copy.
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#e9f2fb',
+              padding: '30px',
+            }}
+          >
+            <div style={{ width: '100%', maxWidth: '620px' }}>
+              <AccountNdaCeremony result={result} variant="onboarding" />
             </div>
           </div>
         </div>

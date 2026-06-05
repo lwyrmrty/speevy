@@ -449,3 +449,102 @@ export async function getAccountNdaCeremonyForOutsider(
     { profileId: null, role: 'lp' },
   );
 }
+
+export type OutsiderAccountNdaGateState = {
+  // True only if the access cookie verifies for this opportunity.
+  authorized: boolean;
+  // The outsider's lp row id resolved from the cookie email, when one exists.
+  lpId: string | null;
+  // True only when account_ndas.status === 'signed' for that lp.
+  signed: boolean;
+  // True when an account-default NDA template is configured. When false, the
+  // hard gate must allow through (admin has not set a default to enforce).
+  hasAccountTemplate: boolean;
+};
+
+// Resolve the outsider's email from the verified, opportunity-scoped access
+// cookie. Shared by the read-only gate-state helper and the lightweight poll
+// below so they agree on authorization.
+async function resolveOutsiderEmail(opportunityId: string): Promise<string | null> {
+  if (!z.string().uuid().safeParse(opportunityId).success) {
+    return null;
+  }
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(opportunityAccessCookieName(opportunityId))?.value;
+  return verifyOpportunityAccessToken(token, opportunityId);
+}
+
+/**
+ * Read-only gate decision for the outsider hard NDA gate. Does NOT mint or
+ * mutate an envelope (unlike `ensureAccountNdaEnvelope`). The opportunity page
+ * uses this BEFORE any body/section/asset fetch to decide whether to show the
+ * blocking ceremony. Authorization is the verified opportunity access cookie.
+ */
+export async function getOutsiderAccountNdaGateState(
+  opportunityId: string,
+): Promise<OutsiderAccountNdaGateState> {
+  const email = await resolveOutsiderEmail(opportunityId);
+  if (!email) {
+    return { authorized: false, lpId: null, signed: false, hasAccountTemplate: false };
+  }
+
+  const supabase = createSupabaseAdminClient();
+
+  const [{ data: lp }, template] = await Promise.all([
+    supabase.from('lps').select('id').eq('email', email).maybeSingle(),
+    getAccountDefaultNdaTemplate(),
+  ]);
+
+  const hasAccountTemplate = Boolean(template);
+
+  if (!lp) {
+    return { authorized: true, lpId: null, signed: false, hasAccountTemplate };
+  }
+
+  const { data: accountNda } = await supabase
+    .from('account_ndas')
+    .select('status')
+    .eq('lp_id', lp.id)
+    .maybeSingle();
+
+  return {
+    authorized: true,
+    lpId: lp.id,
+    signed: accountNda?.status === 'signed',
+    hasAccountTemplate,
+  };
+}
+
+/**
+ * Lightweight poll used by the blocking outsider NDA gate after the in-iframe
+ * completion cue. The SignatureAPI webhook is the source of truth and may lag,
+ * so the client polls this until it returns true, then refreshes onto the
+ * opportunity page. Reads only the cookie + account_ndas.status (no template
+ * lookup, no envelope mint).
+ */
+export async function getOutsiderAccountNdaSigned(opportunityId: string): Promise<boolean> {
+  const email = await resolveOutsiderEmail(opportunityId);
+  if (!email) {
+    return false;
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: lp } = await supabase
+    .from('lps')
+    .select('id')
+    .eq('email', email)
+    .maybeSingle();
+
+  if (!lp) {
+    return false;
+  }
+
+  const { data: accountNda } = await supabase
+    .from('account_ndas')
+    .select('status')
+    .eq('lp_id', lp.id)
+    .maybeSingle();
+
+  return accountNda?.status === 'signed';
+}

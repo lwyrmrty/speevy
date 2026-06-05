@@ -2,10 +2,14 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 
+import {
+  getAccountNdaCeremonyForOutsider,
+  getOutsiderAccountNdaGateState,
+} from '@/app/account/nda/actions';
 import { DocumentViewerDrawer } from '@/components/webflow/document-viewer-drawer';
 import { OpportunityInterestCard } from '@/components/webflow/opportunity-interest-card';
 import { OpportunityPasswordGate } from '@/components/webflow/opportunity-password-gate';
-import { OutsiderAccountNda } from '@/components/webflow/outsider-account-nda';
+import { OutsiderNdaGate } from '@/components/webflow/outsider-account-nda';
 import { PageWatermark } from '@/components/webflow/page-watermark';
 import { SectionMiniNav } from '@/components/webflow/section-mini-nav';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
@@ -622,6 +626,31 @@ export default async function OpportunityPreviewPage({
   const isGuest = viewerKind === 'guest';
   const viewerEmail = isGuest ? (guestEmail ?? '') : (user?.email ?? '');
 
+  // Hard NDA gate for OUTSIDERS only. Before touching the opportunity body,
+  // sections, or signed-asset URLs, an unlocked outsider must have signed the
+  // standard ACCOUNT-level NDA. This does not affect admins or invited LPs.
+  // Graceful allow-through when no account-default template is configured (so a
+  // missing admin default never locks everyone out) or when the NDA is signed.
+  if (isGuest) {
+    const ndaGate = await getOutsiderAccountNdaGateState(gate.id);
+    if (ndaGate.hasAccountTemplate && !ndaGate.signed) {
+      const ceremony = await getAccountNdaCeremonyForOutsider(gate.id);
+
+      // `already_signed`/`skipped` (signed in a race, or no resolvable lp row)
+      // fall through to the normal render; only block on success/error. The
+      // gate intentionally shows NO opportunity title, teaser, or body — the
+      // full split-panel ceremony lives in OutsiderNdaGate.
+      if (ceremony.status === 'success' || ceremony.status === 'error') {
+        return (
+          <>
+            <WebflowStyles />
+            <OutsiderNdaGate result={ceremony} opportunityId={gate.id} />
+          </>
+        );
+      }
+    }
+  }
+
   // Belt and suspenders: admins and outsiders read via the service-role client
   // (guarded by the checks above); invited LPs read via their RLS-bound session
   // so the database independently enforces their access.
@@ -827,7 +856,6 @@ export default async function OpportunityPreviewPage({
                 </Link>
               </div>
               {sectionNavItems.length > 1 ? <SectionMiniNav items={sectionNavItems} /> : null}
-              {isGuest ? <OutsiderAccountNda opportunityId={opportunity.id} /> : null}
               <div className="herocard">
                 <img
                   src={thumbnailUrl ?? defaultThumbnail}

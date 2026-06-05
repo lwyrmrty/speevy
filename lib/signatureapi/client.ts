@@ -196,6 +196,18 @@ export async function createEnvelope(params: CreateEnvelopeParams): Promise<Crea
   if (places && places.length > 0) document.places = places;
   if (documentData && Object.keys(documentData).length > 0) document.data = documentData;
 
+  // SignatureAPI `custom` authentication requires a non-empty `data` object whose
+  // key/value pairs are recorded in the envelope audit log to attest that Speevy
+  // authenticated this recipient before issuing the ceremony URL. These values are
+  // already known to SignatureAPI (recipient email) or are our own mapping keys.
+  const authenticationData: Record<string, string> = {
+    'Speevy Authenticated Email': recipient.email,
+    'Authenticated At': new Date().toISOString(),
+  };
+  if (metadata.lp_id) authenticationData['LP ID'] = metadata.lp_id;
+  if (metadata.speevy_kind) authenticationData['NDA Kind'] = metadata.speevy_kind;
+  if (metadata.opportunity_id) authenticationData['Opportunity ID'] = metadata.opportunity_id;
+
   const body = {
     title,
     metadata,
@@ -212,7 +224,7 @@ export async function createEnvelope(params: CreateEnvelopeParams): Promise<Crea
         ceremony: {
           // `custom` auth returns the ceremony URL directly in the create
           // response (vs `email_link`, where url is null until the link is used).
-          authentication: [{ type: 'custom', provider: 'Speevy' }],
+          authentication: [{ type: 'custom', provider: 'Speevy', data: authenticationData }],
           embeddable_in: [embeddableInOrigin],
         },
       },

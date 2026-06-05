@@ -9,6 +9,7 @@ import {
   updateInvestor,
   type UpdateInvestorResult,
 } from '@/app/admin/investors/actions';
+import { resetAccountNdaForLp } from '@/app/account/nda/actions';
 import { LpTagBadge, LpTagEditor } from '@/components/webflow/lp-tag-editor';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import {
@@ -372,6 +373,63 @@ function SignedNdasSection({ ndas }: { ndas: SignedNdaItem[] }) {
   );
 }
 
+// Admin-only control to reset/re-issue an investor's in-flight account NDA so
+// the next ceremony load regenerates a fresh envelope from the current
+// account-default template. A signed NDA is refused server-side.
+function ResetAccountNdaButton({
+  lpId,
+  accountNda,
+}: {
+  lpId: string;
+  accountNda: AdminInvestorRow['accountNda'];
+}) {
+  const router = useRouter();
+  const [message, setMessage] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  if (accountNda?.status === 'signed') {
+    return null;
+  }
+
+  function handleReset() {
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm(
+        'Re-issue this investor\u2019s account NDA? Their in-flight document will be replaced with a fresh copy of the current account-default NDA on their next visit.',
+      );
+      if (!confirmed) return;
+    }
+
+    setMessage(null);
+    startTransition(async () => {
+      const result = await resetAccountNdaForLp({ lpId });
+      if (result.status === 'success') {
+        setMessage({ kind: 'success', text: result.message });
+        router.refresh();
+      } else {
+        setMessage({ kind: 'error', text: result.message });
+      }
+    });
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button
+        type="button"
+        className="button short secondary w-inline-block"
+        onClick={handleReset}
+        disabled={isPending}
+      >
+        <div>{isPending ? 'Re-issuing…' : 'Re-issue NDA'}</div>
+      </button>
+      {message ? (
+        <div className={`speevy-form-message ${message.kind === 'error' ? 'error' : 'success'}`}>
+          {message.text}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function InvestorSlideout({
   investor,
   allTags,
@@ -535,6 +593,7 @@ function InvestorSlideout({
           <div className="fieldblock">
             <div className="fieldlabel">Signed NDAs</div>
             <SignedNdasSection ndas={investor.signedNdas} />
+            <ResetAccountNdaButton lpId={investor.id} accountNda={investor.accountNda} />
           </div>
 
           <div className="fieldrow">

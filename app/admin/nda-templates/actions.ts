@@ -35,11 +35,19 @@ export type NdaTemplateSummary = {
   description: string | null;
   signatureProvider: string;
   sourceFileUrl: string;
+  // JSONB column; coerced to a plain object so the edit form can prefill it.
+  fieldsConfig: Record<string, unknown>;
   version: number;
   isAccountDefault: boolean;
   archivedAt: string | null;
   createdAt: string;
 };
+
+function asFieldsConfig(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
 
 export type NdaTemplateActionResult =
   | { status: 'success'; message: string; templateId: string }
@@ -84,7 +92,7 @@ export async function listNdaTemplates(
   let query = supabase
     .from('nda_templates')
     .select(
-      'id, name, description, signature_provider, source_file_url, version, is_account_default, archived_at, created_at',
+      'id, name, description, signature_provider, source_file_url, fields_config, version, is_account_default, archived_at, created_at',
     )
     .order('created_at', { ascending: false });
 
@@ -100,6 +108,7 @@ export async function listNdaTemplates(
     description: row.description,
     signatureProvider: row.signature_provider,
     sourceFileUrl: row.source_file_url,
+    fieldsConfig: asFieldsConfig(row.fields_config),
     version: row.version,
     isAccountDefault: row.is_account_default,
     archivedAt: row.archived_at,

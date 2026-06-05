@@ -777,7 +777,8 @@ export default async function OpportunityPreviewPage({
   const raiseLabel = compactRaiseAmount(opportunity.target_allocation_cents);
   const minimumLabel = compactMinAmount(opportunity.minimum_investment_cents);
   const originationFeeLabel = compactMinAmount(opportunity.origination_fee_cents);
-  const showDealTerms = opportunity.status !== 'past';
+  const showDealTerms = opportunity.status !== 'past' && opportunity.status !== 'potential';
+  const useCompactHeroMetaRow = opportunity.status === 'past' || opportunity.status === 'potential';
   const hasPrimaryStats = Boolean(raiseLabel || originationFeeLabel || showDealTerms);
   const initialInterestAmountCents = existingInterest?.amount_cents == null
     ? null
@@ -894,7 +895,7 @@ export default async function OpportunityPreviewPage({
                             <div className="hero-social-divider" />
                           </>
                         ) : null}
-                        {opportunity.status === 'past' ? (
+                        {useCompactHeroMetaRow ? (
                           <div className="herostats-row past-hero-meta-row">
                             <OpportunitySectorPills sectors={opportunity.opportunity_sectors} variant="lite" />
                             <div className="alignrow">
@@ -996,7 +997,7 @@ export default async function OpportunityPreviewPage({
                   </div>
                   <div className="sidecard-info-divider" />
                   <div className="div-block-2">
-                    {opportunity.status === 'past' ? (
+                    {useCompactHeroMetaRow ? (
                       <div className="alignrow wrap">
                         <OpportunitySectorPills sectors={opportunity.opportunity_sectors} />
                         <div className="pillstat">

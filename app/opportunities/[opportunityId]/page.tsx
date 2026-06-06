@@ -22,7 +22,7 @@ import {
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-const SHAREABLE_STATUSES = ['active', 'potential', 'past'];
+const SHAREABLE_STATUSES = ['active', 'potential', 'coming_soon', 'closed'];
 
 export const dynamic = 'force-dynamic';
 
@@ -406,6 +406,35 @@ function DocumentsSection({
   );
 }
 
+const teamMemberSocialPlatforms = [
+  {
+    label: 'Website',
+    className: 'sociallink web w-inline-block',
+    icon: <WebsiteIcon />,
+  },
+  {
+    label: 'LinkedIn',
+    className: 'sociallink w-inline-block',
+    icon: <LinkedInIcon />,
+  },
+  {
+    label: 'X / Twitter',
+    className: 'sociallink x w-inline-block',
+    icon: <XIcon />,
+  },
+] as const;
+
+function personSocialLinks(
+  data: Record<string, unknown>,
+  prefix: string,
+  personId: number,
+) {
+  return teamMemberSocialPlatforms.flatMap((platform) => {
+    const href = externalUrl(firstString(data[`${prefix}-${personId}-${platform.label}-Url`]));
+    return href ? [{ ...platform, href }] : [];
+  });
+}
+
 function GenericSection({ section }: { section: SectionRow }) {
   const title = sectionTitle(section);
   const prefix = sectionFallbackLabels[section.type] ?? section.type;
@@ -467,12 +496,19 @@ function TeamLikeSection({
             || firstStringAt(section.data[`${prefix}-Image-Storage-Key`], index);
           const personCallouts = asStringArray(section.data[`${prefix}-${personId}-Callout`]);
           const callouts = personCallouts.length ? personCallouts : legacyCalloutsForIndex(index);
+          const socialLinks = personSocialLinks(section.data, prefix, personId);
+          const thumbnailHref = socialLinks.find((link) => link.label === 'LinkedIn')?.href ?? '#';
 
           return (
           <div className="teamitem" key={`${name}-${index}`}>
             <div className="pagecard full">
               <div className="teamhead-row">
-                <a href="#" className={`teamthumbnail${isInvestors ? ' med' : ''} w-inline-block`}>
+                <a
+                  href={thumbnailHref}
+                  target={thumbnailHref !== '#' ? '_blank' : undefined}
+                  rel={thumbnailHref !== '#' ? 'noopener noreferrer' : undefined}
+                  className={`teamthumbnail${isInvestors ? ' med' : ''} w-inline-block`}
+                >
                   <img
                     src={imageStorageKey
                       ? assetUrls[imageStorageKey] ?? (isInvestors
@@ -491,6 +527,21 @@ function TeamLikeSection({
                     <div className="teamname">{name}</div>
                     <div className="teamtitle">{personTitle}</div>
                   </div>
+                  {socialLinks.length > 0 ? (
+                    <div className="socialsrow">
+                      {socialLinks.map((link) => (
+                        <a
+                          key={link.label}
+                          href={link.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={link.className}
+                        >
+                          {link.icon}
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               </div>
               {callouts.length > 0 ? (
@@ -624,6 +675,7 @@ export default async function OpportunityPreviewPage({
       ? 'guest'
       : 'lp';
   const isGuest = viewerKind === 'guest';
+  const canAccessOpportunitiesList = isAdmin || lp?.status === 'approved';
   const viewerEmail = isGuest ? (guestEmail ?? '') : (user?.email ?? '');
 
   // Hard NDA gate for OUTSIDERS only. Before touching the opportunity body,
@@ -777,8 +829,8 @@ export default async function OpportunityPreviewPage({
   const raiseLabel = compactRaiseAmount(opportunity.target_allocation_cents);
   const minimumLabel = compactMinAmount(opportunity.minimum_investment_cents);
   const originationFeeLabel = compactMinAmount(opportunity.origination_fee_cents);
-  const showDealTerms = opportunity.status !== 'past' && opportunity.status !== 'potential';
-  const useCompactHeroMetaRow = opportunity.status === 'past' || opportunity.status === 'potential';
+  const showDealTerms = opportunity.status !== 'closed' && opportunity.status !== 'potential';
+  const useCompactHeroMetaRow = opportunity.status === 'closed' || opportunity.status === 'potential';
   const hasPrimaryStats = Boolean(raiseLabel || originationFeeLabel || showDealTerms);
   const initialInterestAmountCents = existingInterest?.amount_cents == null
     ? null
@@ -826,11 +878,13 @@ export default async function OpportunityPreviewPage({
                   className="navlogo"
                 />
               </Link>
-              <div className="navalign">
-                <Link href="/opportunities" className="navlink w-inline-block">
-                  <div>All Opportunities</div>
-                </Link>
-              </div>
+              {canAccessOpportunitiesList ? (
+                <div className="navalign">
+                  <Link href="/opportunities" className="navlink w-inline-block">
+                    <div>All Opportunities</div>
+                  </Link>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -845,10 +899,14 @@ export default async function OpportunityPreviewPage({
             </div>
             <div className="pagemain nogap">
               <div className="breadcrumbrow">
-                <Link href="/opportunities" className="breadcrumbicon w-inline-block">
-                  <HomeIcon />
-                </Link>
-                <div className="breadcrumbdivider">//</div>
+                {canAccessOpportunitiesList ? (
+                  <>
+                    <Link href="/opportunities" className="breadcrumbicon w-inline-block">
+                      <HomeIcon />
+                    </Link>
+                    <div className="breadcrumbdivider">//</div>
+                  </>
+                ) : null}
                 <Link href={`/opportunities/${opportunity.slug}`} className="breadcrumbicon w-inline-block">
                   <img src={logoUrl ?? defaultLogo} loading="lazy" alt="" className="fullimage" />
                 </Link>
@@ -896,7 +954,9 @@ export default async function OpportunityPreviewPage({
                           </>
                         ) : null}
                         {useCompactHeroMetaRow ? (
-                          <div className="herostats-row past-hero-meta-row">
+                          <div
+                            className={`herostats-row ${opportunity.status === 'closed' ? 'closed-hero-meta-row' : 'past-hero-meta-row'}`}
+                          >
                             <OpportunitySectorPills sectors={opportunity.opportunity_sectors} variant="lite" />
                             <div className="alignrow">
                               <div className="pillstat litebg">
@@ -1053,10 +1113,10 @@ export default async function OpportunityPreviewPage({
                 <div className="cardblock reserve-interest-cardblock">
                   <div>
                     <div className="sideheading">
-                      {opportunity.status === 'past' ? 'Interested?' : 'Reserve Interest'}
+                      {opportunity.status === 'closed' ? 'Interested?' : 'Reserve Interest'}
                     </div>
                     <div className="sidesubheading">
-                      {opportunity.status === 'past'
+                      {opportunity.status === 'closed'
                         ? 'Let us know if you would like updates if this opportunity becomes available again.'
                         : 'Update the opportunity with your interest and estimated check'}
                     </div>
@@ -1067,7 +1127,7 @@ export default async function OpportunityPreviewPage({
                       initialInterested={Boolean(existingInterest)}
                       minimumInvestmentCents={centsToNumber(opportunity.minimum_investment_cents)}
                       opportunityId={opportunity.id}
-                      variant={opportunity.status === 'past' ? 'past' : 'standard'}
+                      variant={opportunity.status === 'closed' ? 'closed' : 'standard'}
                     />
                   </div>
                 </div>

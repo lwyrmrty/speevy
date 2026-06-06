@@ -88,6 +88,35 @@ export default async function EditOpportunityPage({
     getSignedAssetUrl(opportunity?.logo_storage_key ?? null),
   ]);
 
+  const asStringArray = (value: unknown): string[] => {
+    if (typeof value === 'string' && value) {
+      return [value];
+    }
+
+    if (Array.isArray(value)) {
+      return value.filter((item): item is string => typeof item === 'string' && item.length > 0);
+    }
+
+    return [];
+  };
+
+  const sectionAssetKeys = Array.from(new Set(
+    (sections ?? []).flatMap((section) =>
+      Object.entries(section.data as Record<string, unknown>).flatMap(([key, value]) =>
+        key.endsWith('Storage-Key') ? asStringArray(value) : [],
+      ),
+    ),
+  ));
+  const sectionAssetUrlEntries = await Promise.all(
+    sectionAssetKeys.map(async (storageKey) => [
+      storageKey,
+      await getSignedAssetUrl(storageKey),
+    ] as const),
+  );
+  const sectionAssetUrls = Object.fromEntries(
+    sectionAssetUrlEntries.filter((entry): entry is readonly [string, string] => Boolean(entry[1])),
+  );
+
   const initialData: OpportunityEditorInitialData = {
     slug: opportunityId,
     ndaTemplates: ndaTemplatesData ?? [],
@@ -119,6 +148,7 @@ export default async function EditOpportunityPage({
         }
       : null,
     sections: sections ?? [],
+    sectionAssetUrls,
   };
 
   return <OpportunityEditor initialData={initialData} />;

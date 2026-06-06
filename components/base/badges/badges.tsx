@@ -68,6 +68,11 @@ export const filledColors: Record<BadgeColors, { root: string; addon: string; ad
         addon: "text-utility-orange-500",
         addonButton: "hover:bg-utility-orange-100 text-utility-orange-400 hover:text-utility-orange-500",
     },
+    teal: {
+        root: "bg-utility-teal-50 text-utility-teal-700 ring-utility-teal-200",
+        addon: "text-utility-teal-500",
+        addonButton: "hover:bg-utility-teal-100 text-utility-teal-400 hover:text-utility-teal-500",
+    },
 };
 
 const addonOnlyColors = Object.fromEntries(Object.entries(filledColors).map(([key, value]) => [key, { root: "", addon: value.addon }])) as Record<

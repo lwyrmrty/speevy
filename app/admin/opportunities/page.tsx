@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: 'Manage Opportunities | Speevy',
 };
 
-type OpportunityStatus = 'active' | 'potential' | 'draft' | 'past';
+type OpportunityStatus = 'active' | 'potential' | 'coming_soon' | 'draft' | 'closed';
 
 type OpportunityRow = {
   id: string;
@@ -31,24 +31,27 @@ type ViewRow = {
 const statusLabels: Record<OpportunityStatus, string> = {
   active: 'Active',
   potential: 'Potential',
+  coming_soon: 'Coming Soon',
   draft: 'Draft',
-  past: 'Past',
+  closed: 'Closed',
 };
 
 const statusClasses: Record<OpportunityStatus, string> = {
   active: 'cellstatus',
   potential: 'cellstatus potential',
+  coming_soon: 'cellstatus potential',
   draft: 'cellstatus draft',
-  past: 'cellstatus past',
+  closed: 'cellstatus closed',
 };
 
 // Admins want live deals first, then upcoming, then archived. Draft is slotted
-// with the not-yet-live group so Past stays last as requested.
+// with the not-yet-live group so Closed stays last as requested.
 const statusSortOrder: Record<OpportunityStatus, number> = {
   active: 0,
   potential: 1,
+  coming_soon: 1,
   draft: 2,
-  past: 3,
+  closed: 3,
 };
 
 function centsToNumber(value: number | string | null) {

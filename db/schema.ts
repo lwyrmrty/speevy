@@ -70,9 +70,10 @@ export const accreditationStatus = pgEnum('accreditation_status', [
 
 export const opportunityStatus = pgEnum('opportunity_status', [
   'potential',
+  'coming_soon',
   'draft',
   'active',
-  'past',
+  'closed',
 ]);
 
 export const interestStatus = pgEnum('interest_status', [

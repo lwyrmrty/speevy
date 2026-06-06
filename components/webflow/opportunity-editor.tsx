@@ -5,6 +5,8 @@ import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useRouter } from 'next/navigation';
 import {
+  createContext,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -24,7 +26,7 @@ import { WebflowPasswordField } from '@/components/webflow/password-field';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
 
-type OpportunityStatus = 'draft' | 'potential' | 'active' | 'past';
+type OpportunityStatus = 'draft' | 'potential' | 'coming_soon' | 'active' | 'closed';
 type SectionType = 'richContent' | 'links' | 'media' | 'documents' | 'team' | 'investors';
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
@@ -75,7 +77,10 @@ export type OpportunityEditorInitialData = {
     position: number;
     data: Record<string, unknown>;
   }[];
+  sectionAssetUrls?: Record<string, string>;
 };
+
+const SectionAssetUrlsContext = createContext<Record<string, string>>({});
 
 type RepeaterItem = {
   id: number;
@@ -95,22 +100,25 @@ type CheckboxRowProps = {
 const statusLabels: Record<OpportunityStatus, string> = {
   draft: 'Draft',
   potential: 'Potential',
+  coming_soon: 'Coming Soon',
   active: 'Active',
-  past: 'Past',
+  closed: 'Closed',
 };
 
 const statusPillClass: Record<OpportunityStatus, string> = {
   draft: 'selectpill draft',
   potential: 'selectpill',
+  coming_soon: 'selectpill',
   active: 'selectpill active',
-  past: 'selectpill past',
+  closed: 'selectpill closed',
 };
 
 const statusIconClass: Record<OpportunityStatus, string> = {
   draft: 'selectlink-icon orange',
   potential: 'selectlink-icon',
+  coming_soon: 'selectlink-icon',
   active: 'selectlink-icon green',
-  past: 'selectlink-icon',
+  closed: 'selectlink-icon',
 };
 
 const defaultThumbnail = '/webflow/images/photograph.svg';
@@ -634,11 +642,31 @@ function UploadButton({
   slug: string;
   onDirty: () => void;
 }) {
+  const sectionAssetUrls = useContext(SectionAssetUrlsContext);
   const inputRef = useRef<HTMLInputElement>(null);
   const [previewSrc, setPreviewSrc] = useState('');
   const [previewType, setPreviewType] = useState<'image' | 'document' | ''>('');
-  const [storageKey, setStorageKey] = useState('');
+  const [storageKey, setStorageKey] = useState(initialStorageKey);
   const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    if (!initialStorageKey) {
+      return;
+    }
+
+    setStorageKey((current) => current || initialStorageKey);
+
+    if (assetKind === 'document') {
+      setPreviewType('document');
+      return;
+    }
+
+    const signedUrl = sectionAssetUrls[initialStorageKey];
+    if (signedUrl) {
+      setPreviewType('image');
+      setPreviewSrc(signedUrl);
+    }
+  }, [assetKind, initialStorageKey, sectionAssetUrls]);
 
   const handleChange = async (file: File) => {
     if (file.type.startsWith('image/')) {
@@ -686,8 +714,8 @@ function UploadButton({
           <UploadIcon />
         )}
       </button>
-      {storageKey || initialStorageKey ? (
-        <input name={name} type="hidden" value={storageKey || initialStorageKey} readOnly />
+      {storageKey ? (
+        <input name={name} type="hidden" value={storageKey} readOnly />
       ) : null}
       <input
         ref={inputRef}
@@ -1282,6 +1310,10 @@ function MediaDrawer({
   onDirty: () => void;
   onUploadError: (message: string) => void;
 }) {
+  const mediaStorageKey = typeof initialData?.['Media-Storage-Key'] === 'string'
+    ? initialData['Media-Storage-Key']
+    : stringValues(initialData?.['Media-Storage-Key'])[0] ?? '';
+
   return (
     <div content-type="media" className="contenttype-block">
       <SectionIntroFields prefix="Media" initialData={initialData} onDirty={onDirty} />
@@ -1293,6 +1325,7 @@ function MediaDrawer({
               <UploadButton
                 label="Upload media"
                 name="Media-Storage-Key"
+                initialStorageKey={mediaStorageKey}
                 slug={uploadSlug}
                 onDirty={onDirty}
                 onError={onUploadError}
@@ -1815,7 +1848,7 @@ function StatusDropdown({
   onChange: (status: OpportunityStatus) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const options: OpportunityStatus[] = ['draft', 'potential', 'active', 'past'];
+  const options: OpportunityStatus[] = ['draft', 'potential', 'coming_soon', 'active', 'closed'];
 
   return (
     <div className="dropdownblocks full">
@@ -2066,6 +2099,7 @@ export function OpportunityEditor({
   );
 
   return (
+    <SectionAssetUrlsContext.Provider value={initialData.sectionAssetUrls ?? {}}>
     <div ref={rootRef} className="pagecontainer breadcrumb" onInput={markDirty}>
       <div className="breadcrumbrow">
         <a href="/admin/opportunities" className="breadcrumbicon w-inline-block" aria-label="Opportunities">
@@ -2587,5 +2621,6 @@ export function OpportunityEditor({
         </div>
       </div>
     </div>
+    </SectionAssetUrlsContext.Provider>
   );
 }

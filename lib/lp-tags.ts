@@ -16,6 +16,7 @@ export const TAG_COLORS = [
   'purple',
   'pink',
   'orange',
+  'teal',
 ] as const;
 
 export type TagColor = (typeof TAG_COLORS)[number];

@@ -44,6 +44,7 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 const saveInterestSchema = z.object({
   opportunityId: z.string().uuid(),
   amountCents: z.number().int().positive().nullable(),
+  interested: z.boolean(),
 });
 
 // Gate submission: First/Last name + email + the admin-chosen opportunity
@@ -64,7 +65,9 @@ const verifyAccessSchema = requestAccessSchema.extend({
 
 type AdminSupabaseClient = ReturnType<typeof createSupabaseAdminClient>;
 
-const SHAREABLE_STATUSES = ['active', 'potential', 'past'];
+const SHAREABLE_STATUSES = ['active', 'potential', 'coming_soon', 'closed'];
+
+const AMOUNT_REQUIRED_STATUSES = ['active', 'potential', 'coming_soon'];
 
 // Generic, non-revealing throttle response. It must not disclose whether the
 // password was correct or whether the slug/email exists — only that the caller
@@ -278,12 +281,74 @@ async function persistInterest(
   return { status: 'success' };
 }
 
+async function persistWithdrawal(
+  supabase: AdminSupabaseClient,
+  {
+    opportunity,
+    lp,
+    actorProfileId,
+    source,
+  }: {
+    opportunity: InterestOpportunity;
+    lp: InterestLp;
+    actorProfileId: string | null;
+    source: 'lp' | 'password_gate';
+  },
+): Promise<SaveOpportunityInterestResult> {
+  const withdrawnAt = new Date().toISOString();
+  const { data: existingInterest, error: lookupError } = await supabase
+    .from('interests')
+    .select('id')
+    .eq('opportunity_id', opportunity.id)
+    .eq('lp_id', lp.id)
+    .is('withdrawn_at', null)
+    .maybeSingle();
+
+  if (lookupError) {
+    return { status: 'error', message: 'Unable to withdraw interest. Please try again.' };
+  }
+
+  if (!existingInterest) {
+    return { status: 'error', message: 'No interest to withdraw.' };
+  }
+
+  const { error } = await supabase
+    .from('interests')
+    .update({
+      status: 'withdrawn',
+      withdrawn_at: withdrawnAt,
+    })
+    .eq('id', existingInterest.id);
+
+  if (error) {
+    return { status: 'error', message: 'Unable to withdraw interest. Please try again.' };
+  }
+
+  await supabase.from('audit_log').insert({
+    actor_profile_id: actorProfileId,
+    actor_role: 'lp',
+    action: 'interest.withdrawn',
+    entity_type: 'opportunity',
+    entity_id: opportunity.id,
+    metadata: {
+      lp_id: lp.id,
+      source,
+    },
+  });
+
+  revalidatePath('/opportunities');
+  revalidatePath(`/opportunities/${opportunity.slug}`);
+
+  return { status: 'success' };
+}
+
 // Outsider path: a visitor with a valid (signed, opportunity-scoped) access
 // cookie submits interest on a password-protected opportunity. Their identity
 // is the email they entered at the gate, stored on an "outsider" LP row.
 async function saveGuestOpportunityInterest(
   opportunityId: string,
   amountCents: number | null,
+  interested: boolean,
 ): Promise<SaveOpportunityInterestResult> {
   const cookieStore = await cookies();
   const token = cookieStore.get(opportunityAccessCookieName(opportunityId))?.value;
@@ -309,14 +374,23 @@ async function saveGuestOpportunityInterest(
     return { status: 'error', message: 'This opportunity is not currently accepting interest.' };
   }
 
-  if (['active', 'potential'].includes(opportunity.status) && amountCents === null) {
-    return { status: 'error', message: 'Enter a valid interest amount.' };
-  }
-
   const { lp, error } = await findOrCreateOutsiderLp(supabase, email);
 
   if (error || !lp) {
     return { status: 'error', message: error ?? 'Unable to save interest. Please try again.' };
+  }
+
+  if (!interested) {
+    return persistWithdrawal(supabase, {
+      opportunity,
+      lp,
+      actorProfileId: null,
+      source: 'password_gate',
+    });
+  }
+
+  if (AMOUNT_REQUIRED_STATUSES.includes(opportunity.status) && amountCents === null) {
+    return { status: 'error', message: 'Enter a valid interest amount.' };
   }
 
   return persistInterest(supabase, {
@@ -343,7 +417,11 @@ export async function saveOpportunityInterest(
   } = await serverSupabase.auth.getUser();
 
   if (!user) {
-    return saveGuestOpportunityInterest(parsed.data.opportunityId, parsed.data.amountCents);
+    return saveGuestOpportunityInterest(
+      parsed.data.opportunityId,
+      parsed.data.amountCents,
+      parsed.data.interested,
+    );
   }
 
   const supabase = createSupabaseAdminClient();
@@ -371,10 +449,17 @@ export async function saveOpportunityInterest(
     return { status: 'error', message: 'This opportunity is not currently accepting interest.' };
   }
 
-  if (['active', 'potential'].includes(opportunity.status)) {
-    if (parsed.data.amountCents === null) {
-      return { status: 'error', message: 'Enter a valid interest amount.' };
-    }
+  if (!parsed.data.interested) {
+    return persistWithdrawal(supabase, {
+      opportunity,
+      lp: { id: lp.id, email: lp.email, full_name: lp.full_name },
+      actorProfileId: user.id,
+      source: 'lp',
+    });
+  }
+
+  if (AMOUNT_REQUIRED_STATUSES.includes(opportunity.status) && parsed.data.amountCents === null) {
+    return { status: 'error', message: 'Enter a valid interest amount.' };
   }
 
   return persistInterest(supabase, {

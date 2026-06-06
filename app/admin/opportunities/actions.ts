@@ -6,7 +6,7 @@ import { INVESTOR_SECTORS } from '@/lib/investor-request';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-const statusSchema = z.enum(['draft', 'potential', 'active', 'past']);
+const statusSchema = z.enum(['draft', 'potential', 'coming_soon', 'active', 'closed']);
 const opportunityAssetKindSchema = z.enum(['thumbnail', 'logo', 'section', 'document']);
 const opportunityAssetsBucket = 'opportunity-assets';
 const opportunityAssetMimeTypes = [

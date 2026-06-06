@@ -829,8 +829,12 @@ export default async function OpportunityPreviewPage({
   const raiseLabel = compactRaiseAmount(opportunity.target_allocation_cents);
   const minimumLabel = compactMinAmount(opportunity.minimum_investment_cents);
   const originationFeeLabel = compactMinAmount(opportunity.origination_fee_cents);
-  const showDealTerms = opportunity.status !== 'closed' && opportunity.status !== 'potential';
-  const useCompactHeroMetaRow = opportunity.status === 'closed' || opportunity.status === 'potential';
+  const showDealTerms = opportunity.status !== 'closed'
+    && opportunity.status !== 'potential'
+    && opportunity.status !== 'coming_soon';
+  const useCompactHeroMetaRow = opportunity.status === 'closed'
+    || opportunity.status === 'potential'
+    || opportunity.status === 'coming_soon';
   const hasPrimaryStats = Boolean(raiseLabel || originationFeeLabel || showDealTerms);
   const initialInterestAmountCents = existingInterest?.amount_cents == null
     ? null

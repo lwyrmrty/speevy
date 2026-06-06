@@ -340,9 +340,10 @@ strong {
   justify-content: center;
   align-items: center;
   flex: 0 0 auto;
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
+  width: 41.25px;
+  min-width: 41.25px;
+  height: 41.25px;
+  font-size: 18.17px;
   aspect-ratio: 1 / 1;
   display: flex;
 }
@@ -1482,6 +1483,10 @@ strong {
 
 .speevy-investors-table .profilesquare {
   margin-right: 10px;
+}
+
+.speevy-investors-table .tablecell.first .cellname + .alignrow {
+  margin-top: 5px;
 }
 
 .speevy-interest-investor-cell {

@@ -828,7 +828,7 @@ export function AdminInvestorsTable({
                   </div>
                   <div>
                     <div className="cellname">{investor.fullName || investor.email}</div>
-                    <div className="alignrow aligncenter" style={{ gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
+                    <div className="alignrow aligncenter" style={{ gap: '6px', flexWrap: 'wrap' }}>
                       <InvestorStatusBadge investor={investor} />
                       <AccountNdaBadge accountNda={investor.accountNda} />
                       {investor.tags.map((tag) => (

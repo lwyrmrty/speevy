@@ -592,15 +592,17 @@ export default async function OpportunitiesHomePage() {
     cards.filter((opportunity) => opportunity.status === 'active'),
   );
   const potentialOpportunities = sortOpportunitiesByTitle(
-    cards.filter((opportunity) =>
-      opportunity.status === 'potential' || opportunity.status === 'coming_soon',
-    ),
+    cards.filter((opportunity) => opportunity.status === 'potential'),
+  );
+  const comingSoonOpportunities = sortOpportunitiesByTitle(
+    cards.filter((opportunity) => opportunity.status === 'coming_soon'),
   );
   const closedOpportunities = sortOpportunitiesByTitle(
     cards.filter((opportunity) => opportunity.status === 'closed'),
   );
   const opportunityNavItems = [
     { href: '#active', label: 'Active Opportunities' },
+    { href: '#coming-soon', label: 'Coming Soon' },
     { href: '#potential', label: 'Potential Opportunities' },
     { href: '#closed', label: 'Closed Opportunities' },
   ];
@@ -671,11 +673,26 @@ export default async function OpportunitiesHomePage() {
                     : <EmptyState label="Active Opportunities" />}
                 </div>
               </div>
+              <div id="coming-soon" className="contentblock">
+                <div className="tableheader">
+                  <div>
+                    <div className="pagetitle">Coming Soon</div>
+                    <div className="pagesubtitle">Opportunities launching soon. Share your interest and estimated allocation amount to reserve your spot before it becomes active.</div>
+                  </div>
+                </div>
+                <div className="cardlist nomargin">
+                  {comingSoonOpportunities.length > 0
+                    ? comingSoonOpportunities.map((opportunity) => (
+                      <CompactOpportunityRow key={opportunity.id} opportunity={opportunity} />
+                    ))
+                    : <EmptyState label="Coming Soon Opportunities" />}
+                </div>
+              </div>
               <div id="potential" className="contentblock">
                 <div className="tableheader">
                   <div>
                     <div className="pagetitle">Potential Opportunities</div>
-                    <div className="pagesubtitle">Potential future oppportunities, but encourage you to share interest and estimated allocation</div>
+                    <div className="pagesubtitle">Opportunities that might be coming in the future. We encourage you to share interest and estimated allocations regardless, as we expect these to fill up fast.</div>
                   </div>
                 </div>
                 <div className="cardlist nomargin">

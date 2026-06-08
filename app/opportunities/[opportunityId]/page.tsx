@@ -644,18 +644,20 @@ export default async function OpportunityPreviewPage({
   // longer gates visibility. A draft is never shareable (admin-only).
   const isShareable = SHAREABLE_STATUSES.includes(gate.status);
 
+  const isApprovedLp = lp?.status === 'approved';
+
   // Resolve the outsider access cookie for password-protected opportunities.
   let guestEmail: string | null = null;
-  if (gate.password_protected && !isAdmin) {
+  if (gate.password_protected && !isAdmin && !isApprovedLp) {
     const cookieStore = await cookies();
     const token = cookieStore.get(opportunityAccessCookieName(gate.id))?.value;
     guestEmail = verifyOpportunityAccessToken(token, gate.id);
   }
 
-  // Password-protected, shared via direct link: anyone who is not an admin must
-  // unlock with the admin-chosen password + their email. A draft that is also
-  // password protected is admin-only (never shareable).
-  if (gate.password_protected && !isAdmin) {
+  // Password-protected, shared via direct link: outsiders (not admins or approved
+  // LPs) must unlock with the admin-chosen password + their email. A draft that
+  // is also password protected is admin-only (never shareable).
+  if (gate.password_protected && !isAdmin && !isApprovedLp) {
     if (!isShareable) {
       notFound();
     }
@@ -670,8 +672,8 @@ export default async function OpportunityPreviewPage({
     }
   }
 
-  // Normal (non-password) opportunities keep the invited-LP-only behavior.
-  if (!gate.password_protected) {
+  // Invited LP-only behavior for non-outsider viewers.
+  if (!gate.password_protected || isApprovedLp) {
     if (!user) {
       redirect('/login');
     }

@@ -4,7 +4,7 @@ import './globals.css';
 import { ToastProvider } from '@/components/ui/toast';
 
 export const metadata: Metadata = {
-  title: 'Speevy | Harpoon Ventures',
+  title: 'Harpoon - Opportunities',
   description: 'Internal LP portal for Harpoon SPV opportunities.',
 };
 

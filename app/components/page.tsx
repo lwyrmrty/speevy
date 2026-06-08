@@ -9,7 +9,6 @@ import { dashboardSubItems } from '@/components/application/app-navigation/navig
 import { TableAlternatingFillsDemo } from '@/components/application/table/table-alternating-fills-demo';
 
 export const metadata: Metadata = {
-  title: 'Components | Speevy',
   description: 'Preview reusable Speevy application components.',
 };
 

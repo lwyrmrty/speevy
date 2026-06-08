@@ -1,12 +1,6 @@
-import type { Metadata } from 'next';
-
 import { listNdaTemplates } from '@/app/admin/nda-templates/actions';
 import { NdaTemplatesManager } from '@/components/webflow/nda-templates-manager';
 import { requireAdmin } from '@/lib/auth/admin';
-
-export const metadata: Metadata = {
-  title: 'NDA Templates | Speevy',
-};
 
 export default async function AdminNdaTemplatesPage() {
   await requireAdmin();

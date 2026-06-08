@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { WebflowLoginForm } from '@/components/auth/webflow-login-form';
 
 export const metadata: Metadata = {
-  title: 'Sign In | Speevy',
   description: 'Log in to Speevy with a one-time email code.',
 };
 

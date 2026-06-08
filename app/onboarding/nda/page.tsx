@@ -1,12 +1,6 @@
-import type { Metadata } from 'next';
-
 import { getAccountNdaCeremonyForOnboardingToken } from '@/app/account/nda/actions';
 import { AccountNdaCeremony } from '@/components/webflow/account-nda-ceremony';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
-
-export const metadata: Metadata = {
-  title: 'Sign your NDA | Speevy',
-};
 
 export const dynamic = 'force-dynamic';
 

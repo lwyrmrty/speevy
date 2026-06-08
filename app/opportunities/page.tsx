@@ -1,4 +1,3 @@
-import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
@@ -10,10 +9,6 @@ import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
-
-export const metadata: Metadata = {
-  title: 'Opportunities | Speevy',
-};
 
 type OpportunityRow = {
   id: string;
@@ -172,6 +167,11 @@ function StatusPill({ status }: { status: OpportunityRow['status'] }) {
   );
 }
 
+function stageLabel(stage: string | null | undefined): string | null {
+  const trimmed = stage?.trim();
+  return trimmed ? trimmed : null;
+}
+
 function OpportunityStats({ opportunity }: { opportunity: OpportunityCardRow }) {
   const carry = basisPointsToPercent(opportunity.carry_percentage_basis_points);
   const managementFee = basisPointsToPercent(opportunity.management_fee_basis_points);
@@ -184,6 +184,7 @@ function OpportunityStats({ opportunity }: { opportunity: OpportunityCardRow }) 
   const originationFeeLabel = centsToNumber(opportunity.origination_fee_cents)
     ? compactMoney(opportunity.origination_fee_cents)
     : null;
+  const opportunityStageLabel = stageLabel(opportunity.stage);
 
   return (
     <div className="div-block-2">
@@ -205,16 +206,20 @@ function OpportunityStats({ opportunity }: { opportunity: OpportunityCardRow }) 
           </div>
         ) : null}
       </div>
-      <div className="alignrow wrap">
-        <div className="pillstat">
-          <div><span className="dimish">Stage:</span> {opportunity.stage ?? 'N/A'}</div>
+      {opportunityStageLabel || minimumLabel ? (
+        <div className="alignrow wrap">
+          {opportunityStageLabel ? (
+            <div className="pillstat">
+              <div><span className="dimish">Stage:</span> {opportunityStageLabel}</div>
+            </div>
+          ) : null}
+          {minimumLabel ? (
+            <div className="pillstat">
+              <div><span className="dimish">Min:</span> {minimumLabel}</div>
+            </div>
+          ) : null}
         </div>
-        {minimumLabel ? (
-          <div className="pillstat">
-            <div><span className="dimish">Min:</span> {minimumLabel}</div>
-          </div>
-        ) : null}
-      </div>
+      ) : null}
     </div>
   );
 }
@@ -310,6 +315,7 @@ function CompactOpportunityRow({
   disabled?: boolean;
 }) {
   const href = `/opportunities/${opportunity.slug}`;
+  const opportunityStageLabel = stageLabel(opportunity.stage);
 
   return (
     <div className="cardlist-item">
@@ -341,11 +347,13 @@ function CompactOpportunityRow({
         </div>
         <div className="statsright">
           <OpportunitySectorPills sectors={opportunity.opportunity_sectors} alignRight />
-          <div className="alignrow wrap alignright">
-            <div className="pillstat">
-              <div><span className="dimish">Stage:</span> {opportunity.stage ?? 'N/A'}</div>
+          {opportunityStageLabel ? (
+            <div className="alignrow wrap alignright">
+              <div className="pillstat">
+                <div><span className="dimish">Stage:</span> {opportunityStageLabel}</div>
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       </Link>
     </div>

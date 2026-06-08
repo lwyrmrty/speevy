@@ -14,7 +14,6 @@ type InvitePageProps = {
 };
 
 export const metadata: Metadata = {
-  title: 'Accept invite | Speevy',
   description: 'Accept your Speevy invite with a one-time email code.',
 };
 

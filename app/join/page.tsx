@@ -4,7 +4,6 @@ import { InvestorRequestForm } from '@/components/auth/investor-request-form';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
 
 export const metadata: Metadata = {
-  title: 'Request investor access | Speevy',
   description: 'Request Harpoon Ventures investor access through Speevy.',
 };
 

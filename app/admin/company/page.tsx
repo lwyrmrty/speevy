@@ -1,10 +1,4 @@
-import type { Metadata } from 'next';
-
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-
-export const metadata: Metadata = {
-  title: 'Company Settings | Speevy',
-};
 
 type TeamMember = {
   id: string;

@@ -10,7 +10,6 @@ type JoinPageProps = {
 };
 
 export const metadata: Metadata = {
-  title: 'Request investor access | Speevy',
   description: 'Request Harpoon Ventures investor access through Speevy.',
 };
 

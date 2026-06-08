@@ -1,11 +1,6 @@
 import Link from 'next/link';
-import type { Metadata } from 'next';
 
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-
-export const metadata: Metadata = {
-  title: 'Manage Opportunities | Speevy',
-};
 
 type OpportunityStatus = 'active' | 'potential' | 'coming_soon' | 'draft' | 'closed';
 

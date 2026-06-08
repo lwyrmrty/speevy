@@ -187,6 +187,12 @@ function asStringArray(value: unknown) {
   return typeof value === 'string' && value.trim() ? [value] : [];
 }
 
+function asNumberArray(value: unknown) {
+  return asStringArray(value)
+    .map(Number)
+    .filter((id) => Number.isFinite(id) && id > 0);
+}
+
 function firstStringAt(value: unknown, index: number) {
   if (Array.isArray(value)) {
     return typeof value[index] === 'string' ? value[index] : '';
@@ -465,11 +471,17 @@ function TeamLikeSection({
   const savedIds = Object.keys(section.data)
     .map((key) => key.match(new RegExp(`^${prefix}-(\\d+)-Name$`))?.[1])
     .filter((id): id is string => Boolean(id))
-    .map(Number)
-    .sort((a, b) => a - b);
-  const peopleIds = savedIds.length
-    ? savedIds
-    : legacyNames.map((_, index) => index + 1);
+    .map(Number);
+  const uniqueSavedIds = Array.from(new Set(savedIds));
+  const savedOrder = asNumberArray(section.data[`${sectionPrefix}-Order`]);
+  const peopleIds = savedOrder.length
+    ? [
+        ...savedOrder.filter((id) => uniqueSavedIds.includes(id)),
+        ...uniqueSavedIds.filter((id) => !savedOrder.includes(id)).sort((a, b) => a - b),
+      ]
+    : uniqueSavedIds.length
+      ? uniqueSavedIds.sort((a, b) => a - b)
+      : legacyNames.map((_, index) => index + 1);
   const legacyCalloutsForIndex = (index: number) => {
     if (peopleIds.length <= 1) {
       return legacyCallouts;
@@ -829,6 +841,7 @@ export default async function OpportunityPreviewPage({
   const raiseLabel = compactRaiseAmount(opportunity.target_allocation_cents);
   const minimumLabel = compactMinAmount(opportunity.minimum_investment_cents);
   const originationFeeLabel = compactMinAmount(opportunity.origination_fee_cents);
+  const stageLabel = opportunity.stage?.trim() || null;
   const showDealTerms = opportunity.status !== 'closed'
     && opportunity.status !== 'potential'
     && opportunity.status !== 'coming_soon';
@@ -962,16 +975,20 @@ export default async function OpportunityPreviewPage({
                             className={`herostats-row ${opportunity.status === 'closed' ? 'closed-hero-meta-row' : 'past-hero-meta-row'}`}
                           >
                             <OpportunitySectorPills sectors={opportunity.opportunity_sectors} variant="lite" />
-                            <div className="alignrow">
-                              <div className="pillstat litebg">
-                                <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
+                            {stageLabel || minimumLabel ? (
+                              <div className="alignrow">
+                                {stageLabel ? (
+                                  <div className="pillstat litebg">
+                                    <div><span className="dimish">Stage:</span> {stageLabel}</div>
+                                  </div>
+                                ) : null}
+                                {minimumLabel ? (
+                                  <div className="pillstat litebg">
+                                    <div><span className="dimish">Min:</span> {minimumLabel}</div>
+                                  </div>
+                                ) : null}
                               </div>
-                              {minimumLabel ? (
-                                <div className="pillstat litebg">
-                                  <div><span className="dimish">Min:</span> {minimumLabel}</div>
-                                </div>
-                              ) : null}
-                            </div>
+                            ) : null}
                           </div>
                         ) : (
                           <>
@@ -1004,16 +1021,20 @@ export default async function OpportunityPreviewPage({
                                   <div className="statdivider" />
                                 </>
                               ) : null}
-                              <div className="alignrow">
-                                <div className="pillstat litebg">
-                                  <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
+                              {stageLabel || minimumLabel ? (
+                                <div className="alignrow">
+                                  {stageLabel ? (
+                                    <div className="pillstat litebg">
+                                      <div><span className="dimish">Stage:</span> {stageLabel}</div>
+                                    </div>
+                                  ) : null}
+                                  {minimumLabel ? (
+                                    <div className="pillstat litebg">
+                                      <div><span className="dimish">Min:</span> {minimumLabel}</div>
+                                    </div>
+                                  ) : null}
                                 </div>
-                                {minimumLabel ? (
-                                  <div className="pillstat litebg">
-                                    <div><span className="dimish">Min:</span> {minimumLabel}</div>
-                                  </div>
-                                ) : null}
-                              </div>
+                              ) : null}
                             </div>
                           </>
                         )}
@@ -1064,9 +1085,11 @@ export default async function OpportunityPreviewPage({
                     {useCompactHeroMetaRow ? (
                       <div className="alignrow wrap">
                         <OpportunitySectorPills sectors={opportunity.opportunity_sectors} />
-                        <div className="pillstat">
-                          <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
-                        </div>
+                        {stageLabel ? (
+                          <div className="pillstat">
+                            <div><span className="dimish">Stage:</span> {stageLabel}</div>
+                          </div>
+                        ) : null}
                         {minimumLabel ? (
                           <div className="pillstat">
                             <div><span className="dimish">Min:</span> {minimumLabel}</div>
@@ -1100,16 +1123,20 @@ export default async function OpportunityPreviewPage({
                             ) : null}
                           </div>
                         ) : null}
-                        <div className="alignrow wrap">
-                          <div className="pillstat">
-                            <div><span className="dimish">Stage:</span> {opportunity.stage}</div>
+                        {stageLabel || minimumLabel ? (
+                          <div className="alignrow wrap">
+                            {stageLabel ? (
+                              <div className="pillstat">
+                                <div><span className="dimish">Stage:</span> {stageLabel}</div>
+                              </div>
+                            ) : null}
+                            {minimumLabel ? (
+                              <div className="pillstat">
+                                <div><span className="dimish">Min:</span> {minimumLabel}</div>
+                              </div>
+                            ) : null}
                           </div>
-                          {minimumLabel ? (
-                            <div className="pillstat">
-                              <div><span className="dimish">Min:</span> {minimumLabel}</div>
-                            </div>
-                          ) : null}
-                        </div>
+                        ) : null}
                       </>
                     )}
                   </div>

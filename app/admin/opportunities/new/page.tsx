@@ -1,11 +1,5 @@
-import type { Metadata } from 'next';
-
 import { OpportunityEditor } from '@/components/webflow/opportunity-editor';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-
-export const metadata: Metadata = {
-  title: 'Create Opportunity | Speevy',
-};
 
 export default async function NewOpportunityPage() {
   const supabase = createSupabaseAdminClient();

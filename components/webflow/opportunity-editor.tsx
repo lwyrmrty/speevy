@@ -1165,7 +1165,16 @@ function PeopleDrawer({
     .map((key) => key.match(new RegExp(`^${label}-(\\d+)-`))?.[1])
     .filter((id): id is string => Boolean(id))
     .map(Number);
-  const initialIds = Array.from(new Set(savedIds)).sort((a, b) => a - b);
+  const uniqueSavedIds = Array.from(new Set(savedIds));
+  const savedOrder = stringValues(initialData?.[`${sectionLabel}-Order`])
+    .map(Number)
+    .filter((id) => Number.isFinite(id) && id > 0);
+  const initialIds = savedOrder.length
+    ? [
+        ...savedOrder.filter((id) => uniqueSavedIds.includes(id)),
+        ...uniqueSavedIds.filter((id) => !savedOrder.includes(id)).sort((a, b) => a - b),
+      ]
+    : uniqueSavedIds.sort((a, b) => a - b);
   const initialPersonCount = Math.max(initialIds.length, legacyNames.length, 1);
   const initialItems = Array.from({ length: initialPersonCount }, (_, index) => {
     const id = initialIds[index] ?? index + 1;
@@ -1227,9 +1236,11 @@ function PeopleDrawer({
             if (draggedPersonId !== null) {
               setItems((current) => reorderById(current, draggedPersonId, item.id));
               setDraggedPersonId(null);
+              onDirty();
             }
           }}
         >
+          <input type="hidden" name={`${sectionLabel}-Order`} value={String(item.id)} />
           <div className="alignrow aligncenter stretch middle">
             <DragHandle />
             <div className="prompt-block">
@@ -2093,7 +2104,7 @@ export function OpportunityEditor({
       originationFee: compactMinAmount(originationFee),
       carry: `${percentLabel(carry)} Carry`,
       managementFee: managementFeeLabel(managementFee),
-      stage: stage.trim() || 'Stage',
+      stage: stage.trim() || null,
     }),
     [carry, managementFee, minimumCheck, originationFee, stage, targetRaise],
   );
@@ -2182,21 +2193,27 @@ export function OpportunityEditor({
                         </div>
                       ) : null}
                     </div>
-                    <div className="statdivider" />
-                    <div className="alignrow">
-                      <div className="pillstat litebg">
-                        <div>
-                          <span className="dimish">Stage:</span> {heroStats.stage}
+                    {heroStats.stage || heroStats.minimumCheck ? (
+                      <>
+                        <div className="statdivider" />
+                        <div className="alignrow">
+                          {heroStats.stage ? (
+                            <div className="pillstat litebg">
+                              <div>
+                                <span className="dimish">Stage:</span> {heroStats.stage}
+                              </div>
+                            </div>
+                          ) : null}
+                          {heroStats.minimumCheck ? (
+                            <div className="pillstat litebg">
+                              <div>
+                                <span className="dimish">Min:</span> {heroStats.minimumCheck}
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
-                      </div>
-                      {heroStats.minimumCheck ? (
-                        <div className="pillstat litebg">
-                          <div>
-                            <span className="dimish">Min:</span> {heroStats.minimumCheck}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
+                      </>
+                    ) : null}
                   </div>
                 </div>
               </div>

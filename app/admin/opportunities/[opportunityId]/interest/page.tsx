@@ -1,12 +1,7 @@
 import Link from 'next/link';
-import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-
-export const metadata: Metadata = {
-  title: 'Investor Interest | Speevy',
-};
 
 type InterestRow = {
   lp_id: string;

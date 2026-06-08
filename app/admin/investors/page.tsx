@@ -1,5 +1,3 @@
-import type { Metadata } from 'next';
-
 import {
   AdminInvestorsTable,
   type AdminInvestorRow,
@@ -14,10 +12,6 @@ import { CopyInvestorInviteLinkButton } from '@/components/webflow/copy-investor
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
 import { getTagsForLpIds, listTags } from '@/lib/lp-tags';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-
-export const metadata: Metadata = {
-  title: 'Manage Investors | Speevy',
-};
 
 type LpStatus = 'invited' | 'onboarding' | 'pending_review' | 'approved' | 'rejected' | 'removed' | 'outsider';
 

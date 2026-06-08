@@ -9,7 +9,6 @@ import {
 } from '@/components/style-guide/untitled-component-demos';
 
 export const metadata: Metadata = {
-  title: 'Untitled UI Style Guide | Speevy',
   description: 'Visual map of Untitled UI tokens used by Speevy.',
 };
 

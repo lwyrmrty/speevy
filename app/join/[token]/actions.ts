@@ -123,6 +123,12 @@ export async function submitInvestorRequest(
   }
 
   const supabase = createSupabaseAdminClient();
+  const { data: existingLp } = await supabase
+    .from('lps')
+    .select('id')
+    .eq('email', normalizedEmail)
+    .maybeSingle();
+
   const { data: lead, error } = await supabase
     .from('lps')
     .upsert(
@@ -150,6 +156,24 @@ export async function submitInvestorRequest(
       message:
         'We could not submit this request yet. Please try again or contact investors@harpoon.vc.',
     };
+  }
+
+  if (!existingLp) {
+    const { error: auditError } = await supabase.from('audit_log').insert({
+      actor_profile_id: null,
+      actor_role: 'lp',
+      action: 'lp.joined',
+      entity_type: 'lp',
+      entity_id: lead.id,
+      metadata: {
+        source: 'investor_request_link',
+        company_name: request.companyName,
+      },
+    });
+
+    if (auditError) {
+      console.error('LP joined audit log failed:', auditError.message);
+    }
   }
 
   // Tokenized onboarding link so the lead can sign the account NDA right after

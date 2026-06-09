@@ -5,6 +5,12 @@ import { z } from 'zod';
 
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
 import { approvePendingLp } from '@/lib/admin/approve-lp';
+import {
+  buildLpProfilePictureStorageKey,
+  createLpProfilePictureSignedUrl,
+  ensureLpProfilePictureBucket,
+  lpProfilePictureMimeTypes,
+} from '@/lib/lp-profile-picture';
 import { TAG_COLORS, type Tag } from '@/lib/lp-tags';
 import { buildNdaOnboardingUrl } from '@/lib/nda/tokens';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
@@ -29,6 +35,14 @@ const bulkApproveInvestorsSchema = z.object({
 export type UpdateInvestorResult =
   | { status: 'success'; message: string }
   | { status: 'error'; message: string };
+
+export type UploadInvestorProfilePictureResult =
+  | { status: 'success'; message: string; photoUrl: string }
+  | { status: 'error'; message: string };
+
+const uploadInvestorProfilePictureSchema = z.object({
+  lpId: z.string().uuid(),
+});
 
 async function ensureAdmin(): Promise<
   | { ok: true; message: string; userId: string }
@@ -128,6 +142,82 @@ export async function updateInvestor(formData: FormData): Promise<UpdateInvestor
 
   revalidatePath('/admin/investors');
   return { status: 'success', message: 'Investor updated.' };
+}
+
+export async function uploadInvestorProfilePicture(
+  formData: FormData,
+): Promise<UploadInvestorProfilePictureResult> {
+  const auth = await ensureAdmin();
+  if (!auth.ok) {
+    return { status: 'error', message: auth.message };
+  }
+
+  const parsed = uploadInvestorProfilePictureSchema.safeParse({
+    lpId: formData.get('lpId'),
+  });
+
+  if (!parsed.success) {
+    return { status: 'error', message: 'Choose an investor before uploading a photo.' };
+  }
+
+  const file = formData.get('file');
+  if (!(file instanceof File)) {
+    return { status: 'error', message: 'Choose a photo to upload.' };
+  }
+
+  if (!lpProfilePictureMimeTypes.includes(file.type as (typeof lpProfilePictureMimeTypes)[number])) {
+    return { status: 'error', message: 'Only JPG, PNG, WebP, or GIF uploads are supported.' };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: investor } = await supabase
+    .from('lps')
+    .select('id')
+    .eq('id', parsed.data.lpId)
+    .maybeSingle();
+
+  if (!investor) {
+    return { status: 'error', message: 'Investor could not be found.' };
+  }
+
+  const bucketError = await ensureLpProfilePictureBucket(supabase);
+  if (bucketError) {
+    return { status: 'error', message: bucketError };
+  }
+
+  const storageKey = buildLpProfilePictureStorageKey(investor.id, file.name);
+  const { error: uploadError } = await supabase.storage
+    .from('opportunity-assets')
+    .upload(storageKey, file, {
+      contentType: file.type,
+      upsert: true,
+    });
+
+  if (uploadError) {
+    return { status: 'error', message: uploadError.message };
+  }
+
+  const updatedAt = new Date().toISOString();
+  const { error: updateError } = await supabase
+    .from('lps')
+    .update({
+      profile_picture_storage_key: storageKey,
+      updated_at: updatedAt,
+    })
+    .eq('id', investor.id);
+
+  if (updateError) {
+    return { status: 'error', message: updateError.message };
+  }
+
+  const photoUrl = await createLpProfilePictureSignedUrl(supabase, storageKey);
+  if (!photoUrl) {
+    return { status: 'error', message: 'Photo uploaded, but preview URL failed.' };
+  }
+
+  revalidatePath('/admin/investors');
+
+  return { status: 'success', message: 'Profile photo updated.', photoUrl };
 }
 
 const signedNdaUrlSchema = z.object({

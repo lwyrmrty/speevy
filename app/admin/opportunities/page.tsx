@@ -1,5 +1,12 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
 
+import { AdminListPagination } from '@/components/webflow/admin-list-pagination';
+import {
+  DEFAULT_PAGE_SIZE,
+  paginateArray,
+  parsePageParam,
+} from '@/lib/pagination';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 type OpportunityStatus = 'active' | 'potential' | 'coming_soon' | 'draft' | 'closed';
@@ -84,7 +91,13 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
   return count === 1 ? singular : plural;
 }
 
-export default async function AdminOpportunitiesPage() {
+export default async function AdminOpportunitiesPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ page?: string | string[] }>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const page = parsePageParam(resolvedSearchParams.page);
   const supabase = createSupabaseAdminClient();
   const { data: opportunitiesData } = await supabase
     .from('opportunities')
@@ -182,6 +195,8 @@ export default async function AdminOpportunitiesPage() {
       },
     })),
   );
+  const paginated = paginateArray(rows, page, DEFAULT_PAGE_SIZE);
+  const pageRows = paginated.rows;
 
   return (
     <div className="pagecontainer">
@@ -218,8 +233,8 @@ export default async function AdminOpportunitiesPage() {
                   <div>Actions</div>
                 </div>
               </div>
-              {rows.length ? (
-                rows.map((opportunity) => {
+              {pageRows.length ? (
+                pageRows.map((opportunity) => {
                   const targetAllocationCents = centsToNumber(opportunity.target_allocation_cents);
                   const interestPercent = targetAllocationCents
                     ? Math.round((opportunity.metrics.interestAmountCents / targetAllocationCents) * 100)
@@ -330,6 +345,9 @@ export default async function AdminOpportunitiesPage() {
                 </div>
               )}
             </div>
+            <Suspense fallback={null}>
+              <AdminListPagination page={paginated.page} totalPages={paginated.totalPages} />
+            </Suspense>
           </div>
         </div>
       </div>

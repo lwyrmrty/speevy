@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { AdminNavLink } from '@/components/webflow/admin-nav-links';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 function UserIcon() {
@@ -52,24 +53,15 @@ export async function AdminNav() {
             />
           </Link>
           <div className="navalign">
-            <Link href="/admin/opportunities" className="navlink w-inline-block">
-              <div>Opportunities</div>
-            </Link>
-            <Link href="/admin/investors" className="navlink w-inline-block">
-              <div>Investors</div>
-            </Link>
-            <Link href="/admin/tags" className="navlink w-inline-block">
-              <div>Tags</div>
-            </Link>
-            <Link href="/admin/nda-templates" className="navlink w-inline-block">
-              <div>NDA Templates</div>
-            </Link>
+            <AdminNavLink href="/admin/activity">Activity</AdminNavLink>
+            <AdminNavLink href="/admin/opportunities">Opportunities</AdminNavLink>
+            <AdminNavLink href="/admin/investors">Investors</AdminNavLink>
+            <AdminNavLink href="/admin/tags">Tags</AdminNavLink>
+            <AdminNavLink href="/admin/nda-templates">NDA Templates</AdminNavLink>
           </div>
         </div>
         <div className="navalign">
-          <Link href="/admin/company" className="navlink w-inline-block">
-            <div>Company</div>
-          </Link>
+          <AdminNavLink href="/admin/company">Company</AdminNavLink>
           <div className="profileblock">
             <a href="#" className="profilelink w-inline-block">
               <div className="profilesquare">

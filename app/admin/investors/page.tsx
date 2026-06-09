@@ -1,3 +1,5 @@
+import { Suspense } from 'react';
+
 import {
   AdminInvestorsTable,
   type AdminInvestorRow,
@@ -8,9 +10,18 @@ import {
   AdminInvestorsStatusFilter,
   type InvestorStatusFilterValue,
 } from '@/components/webflow/admin-investors-status-filter';
+import { AdminListPagination } from '@/components/webflow/admin-list-pagination';
 import { CopyInvestorInviteLinkButton } from '@/components/webflow/copy-investor-invite-link-button';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
+import { createLpProfilePictureSignedUrl } from '@/lib/lp-profile-picture';
 import { getTagsForLpIds, listTags } from '@/lib/lp-tags';
+import {
+  clampPage,
+  DEFAULT_PAGE_SIZE,
+  getPaginationOffset,
+  getTotalPages,
+  parsePageParam,
+} from '@/lib/pagination';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 type LpStatus = 'invited' | 'onboarding' | 'pending_review' | 'approved' | 'rejected' | 'removed' | 'outsider';
@@ -25,6 +36,7 @@ type InvestorRow = {
   investment_range_min_cents: number | null;
   investment_range_max_cents: number | null;
   created_at: string;
+  profile_picture_storage_key: string | null;
 };
 
 type InterestRow = {
@@ -97,14 +109,38 @@ function parseStatusFilter(value: string | string[] | undefined): InvestorStatus
 export default async function AdminInvestorsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ investor?: string | string[]; status?: string | string[] }>;
+  searchParams?: Promise<{
+    investor?: string | string[];
+    status?: string | string[];
+    page?: string | string[];
+  }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const initialSelectedInvestorId = Array.isArray(resolvedSearchParams.investor)
     ? resolvedSearchParams.investor[0]
     : resolvedSearchParams.investor;
   const statusFilter = parseStatusFilter(resolvedSearchParams.status);
+  const requestedPage = parsePageParam(resolvedSearchParams.page);
+  const pageSize = DEFAULT_PAGE_SIZE;
   const supabase = createSupabaseAdminClient();
+
+  let investorsCountQuery = supabase
+    .from('lps')
+    .select('id', { count: 'exact', head: true })
+    .neq('status', 'removed');
+
+  if (statusFilter === 'outsider') {
+    investorsCountQuery = investorsCountQuery.eq('status', 'outsider');
+  } else if (statusFilter === 'insider') {
+    investorsCountQuery = investorsCountQuery.neq('status', 'outsider');
+  }
+
+  const { count: investorCount } = await investorsCountQuery;
+  const totalCount = investorCount ?? 0;
+  const totalPages = getTotalPages(totalCount, pageSize);
+  const page = clampPage(requestedPage, totalPages);
+  const offset = getPaginationOffset(page, pageSize);
+
   // "Insiders" are invited LPs (any lifecycle status other than 'outsider');
   // "outsiders" unlocked a password-protected opportunity via a shared link.
   let investorsQuery = supabase
@@ -118,7 +154,8 @@ export default async function AdminInvestorsPage({
       sectors_interested,
       investment_range_min_cents,
       investment_range_max_cents,
-      created_at
+      created_at,
+      profile_picture_storage_key
     `)
     .neq('status', 'removed');
 
@@ -128,7 +165,9 @@ export default async function AdminInvestorsPage({
     investorsQuery = investorsQuery.neq('status', 'outsider');
   }
 
-  const { data: investorsData } = await investorsQuery.order('updated_at', { ascending: false });
+  const { data: investorsData } = await investorsQuery
+    .order('updated_at', { ascending: false })
+    .range(offset, offset + pageSize - 1);
 
   const investors = (investorsData ?? []) as InvestorRow[];
   const investorIds = investors.map((investor) => investor.id);
@@ -197,6 +236,19 @@ export default async function AdminInvestorsPage({
       logoStorageKeys.map(async (storageKey) => [
         storageKey,
         await signedAssetUrl(storageKey),
+      ] as const),
+    ),
+  );
+  const profilePictureStorageKeys = Array.from(new Set(
+    investors
+      .map((investor) => investor.profile_picture_storage_key)
+      .filter((key): key is string => Boolean(key)),
+  ));
+  const profilePictureUrls = new Map(
+    await Promise.all(
+      profilePictureStorageKeys.map(async (storageKey) => [
+        storageKey,
+        await createLpProfilePictureSignedUrl(supabase, storageKey),
       ] as const),
     ),
   );
@@ -274,6 +326,9 @@ export default async function AdminInvestorsPage({
     tags: tagsByLp.get(investor.id) ?? [],
     accountNda: accountNdaByLp.get(investor.id) ?? null,
     signedNdas: signedNdasByLp.get(investor.id) ?? [],
+    profilePictureUrl: investor.profile_picture_storage_key
+      ? profilePictureUrls.get(investor.profile_picture_storage_key) ?? null
+      : null,
   }));
 
   return (
@@ -289,6 +344,9 @@ export default async function AdminInvestorsPage({
               </div>
             </div>
             <AdminInvestorsTable investors={rows} allTags={allTags} initialSelectedInvestorId={initialSelectedInvestorId ?? null} />
+            <Suspense fallback={null}>
+              <AdminListPagination page={page} totalPages={totalPages} />
+            </Suspense>
             <AdminInvestorsFallbackScript />
           </div>
         </div>

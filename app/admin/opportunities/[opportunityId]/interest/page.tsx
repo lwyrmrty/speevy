@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { InvestorProfileSquare } from '@/components/webflow/investor-profile-square';
+import { createLpProfilePictureSignedUrl } from '@/lib/lp-profile-picture';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 type InterestRow = {
@@ -13,6 +15,7 @@ type InterestRow = {
 type InterestLp = {
   email: string;
   full_name: string | null;
+  profile_picture_storage_key: string | null;
 };
 
 type SortDirection = 'asc' | 'desc';
@@ -64,15 +67,6 @@ function formatDate(value: string) {
     day: 'numeric',
     year: 'numeric',
   }).format(date);
-}
-
-function initialsForInvestor(label: string) {
-  return label
-    .split(/[\s@.]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('');
 }
 
 function getInterestSort(value: string | string[] | undefined): InterestSort {
@@ -137,7 +131,8 @@ export default async function OpportunityInterestPage({
       indicated_at,
       lps (
         email,
-        full_name
+        full_name,
+        profile_picture_storage_key
       )
     `)
     .eq('opportunity_id', opportunity.id)
@@ -157,6 +152,20 @@ export default async function OpportunityInterestPage({
   const { data: interestsData } = await interestsQuery;
 
   const interests = (interestsData ?? []) as InterestRow[];
+
+  const profilePictureStorageKeys = Array.from(new Set(
+    interests
+      .map((interest) => getInterestLp(interest.lps)?.profile_picture_storage_key)
+      .filter((key): key is string => Boolean(key)),
+  ));
+  const profilePictureUrls = new Map(
+    await Promise.all(
+      profilePictureStorageKeys.map(async (storageKey) => [
+        storageKey,
+        await createLpProfilePictureSignedUrl(supabase, storageKey),
+      ] as const),
+    ),
+  );
 
   const investorCount = interests.length;
   const totalAmountCents = interests.reduce(
@@ -250,15 +259,20 @@ export default async function OpportunityInterestPage({
                 interests.map((interest) => {
                   const lp = getInterestLp(interest.lps);
                   const label = lp?.full_name || lp?.email || 'Unknown investor';
+                  const profilePictureUrl = lp?.profile_picture_storage_key
+                    ? profilePictureUrls.get(lp.profile_picture_storage_key) ?? null
+                    : null;
 
                   return (
                     <div className="tablerow" key={`${label}-${interest.indicated_at}`}>
                       <div className="tablecell first">
                         <div className="speevy-interest-investor-cell">
                           <div className="alignrow aligncenter">
-                            <div className="profilesquare">
-                              <div>{initialsForInvestor(label)}</div>
-                            </div>
+                            <InvestorProfileSquare
+                              fullName={lp?.full_name ?? null}
+                              email={lp?.email ?? label}
+                              photoUrl={profilePictureUrl}
+                            />
                             <div>
                               <div className="cellname">{label}</div>
                               {lp?.email && lp.email !== label ? (

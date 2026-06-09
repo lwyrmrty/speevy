@@ -2,9 +2,11 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { LpSettingsForm } from '@/components/settings/lp-settings-form';
+import { InvestorProfileSquare } from '@/components/webflow/investor-profile-square';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
+import { createLpProfilePictureSignedUrl } from '@/lib/lp-profile-picture';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -55,15 +57,6 @@ function compactRangeMoney(value: number | string | null) {
   return `$${amount.toLocaleString('en-US')}`;
 }
 
-function GearIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" className="usericon">
-      <path fill="currentColor" d="m2.845 16.136 1 1.73c.531.917 1.809 1.261 2.73.73l.529-.306A8.1 8.1 0 0 0 9 19.402V20c0 1.103.897 2 2 2h2c1.103 0 2-.897 2-2v-.598a8.132 8.132 0 0 0 1.896-1.111l.529.306c.923.53 2.198.188 2.731-.731l.999-1.729a2.001 2.001 0 0 0-.731-2.732l-.505-.292a7.718 7.718 0 0 0 0-2.224l.505-.292a2.002 2.002 0 0 0 .731-2.732l-.999-1.729c-.531-.92-1.808-1.265-2.731-.732l-.529.306A8.1 8.1 0 0 0 15 4.598V4c0-1.103-.897-2-2-2h-2c-1.103 0-2 .897-2 2v.598a8.132 8.132 0 0 0-1.896 1.111l-.529-.306c-.924-.531-2.2-.187-2.731.732l-.999 1.729a2.001 2.001 0 0 0 .731 2.732l.505.292a7.683 7.683 0 0 0 0 2.223l-.505.292a2.003 2.003 0 0 0-.731 2.733zm3.326-2.758A5.703 5.703 0 0 1 6 12c0-.462.058-.926.17-1.378a.999.999 0 0 0-.47-1.108l-1.123-.65.998-1.729 1.145.662a.997.997 0 0 0 1.188-.142 6.071 6.071 0 0 1 2.384-1.399A1 1 0 0 0 11 5.3V4h2v1.3a1 1 0 0 0 .708.956 6.083 6.083 0 0 1 2.384 1.399.999.999 0 0 0 1.188.142l1.144-.661 1 1.729-1.124.649a1 1 0 0 0-.47 1.108c.112.452.17.916.17 1.378 0 .461-.058.925-.171 1.378a1 1 0 0 0 .471 1.108l1.123.649-.998 1.729-1.145-.661a.996.996 0 0 0-1.188.142 6.071 6.071 0 0 1-2.384 1.399A1 1 0 0 0 13 18.7l.002 1.3H11v-1.3a1 1 0 0 0-.708-.956 6.083 6.083 0 0 1-2.384-1.399.992.992 0 0 0-1.188-.141l-1.144.662-1-1.729 1.124-.651a1 1 0 0 0 .471-1.108z" />
-      <path fill="currentColor" d="M12 16c2.206 0 4-1.794 4-4s-1.794-4-4-4-4 1.794-4 4 1.794 4 4 4zm0-6c1.084 0 2 .916 2 2s-.916 2-2 2-2-.916-2-2 .916-2 2-2z" />
-    </svg>
-  );
-}
-
 export default async function SettingsPage() {
   const serverSupabase = await createSupabaseServerClient();
   const {
@@ -83,9 +76,9 @@ export default async function SettingsPage() {
 
   const { data: lp } = await supabase
     .from('lps')
-    .select('id, status, email, full_name, sectors_interested, investment_range_min_cents, investment_range_max_cents')
+    .select('id, status, email, full_name, sectors_interested, investment_range_min_cents, investment_range_max_cents, profile_picture_storage_key')
     .eq('profile_id', user.id)
-    .maybeSingle<LpSettingsRow>();
+    .maybeSingle<LpSettingsRow & { profile_picture_storage_key: string | null }>();
 
   if (!lp) {
     redirect(profile?.role === 'admin' ? '/admin' : '/onboarding');
@@ -100,6 +93,10 @@ export default async function SettingsPage() {
   const sectors = normalizeSectors(lp.sectors_interested);
   const minRange = compactRangeMoney(lp.investment_range_min_cents);
   const maxRange = compactRangeMoney(lp.investment_range_max_cents);
+  const profilePhotoUrl = await createLpProfilePictureSignedUrl(
+    supabase,
+    lp.profile_picture_storage_key,
+  );
 
   return (
     <>
@@ -132,9 +129,11 @@ export default async function SettingsPage() {
               ) : null}
               <div className="profileblock">
                 <Link href="/settings" className="profilelink w-inline-block">
-                  <div className="profilesquare">
-                    <GearIcon />
-                  </div>
+                  <InvestorProfileSquare
+                    fullName={fullName}
+                    email={profile?.email || lp.email || user.email || ''}
+                    photoUrl={profilePhotoUrl}
+                  />
                   <div className="text-block">{displayName}</div>
                 </Link>
               </div>

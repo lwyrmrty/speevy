@@ -10,6 +10,8 @@ import {
   type UpdateInvestorResult,
 } from '@/app/admin/investors/actions';
 import { CopyInvestorNdaLinkButton } from '@/components/webflow/copy-investor-nda-link-button';
+import { AdminInvestorProfilePictureUpload } from '@/components/webflow/admin-investor-profile-picture-upload';
+import { InvestorProfileSquare } from '@/components/webflow/investor-profile-square';
 import { Badge } from '@/components/base/badges/badges';
 import type { BadgeColors } from '@/components/base/badges/badge-types';
 import { LpTagBadge, LpTagEditor } from '@/components/webflow/lp-tag-editor';
@@ -52,6 +54,7 @@ export type AdminInvestorRow = {
   accountNda: { status: 'signed' | 'pending'; signedAt: string | null } | null;
   // Account + per-opportunity NDAs for the profile drawer's "Signed NDAs" list.
   signedNdas: SignedNdaItem[];
+  profilePictureUrl: string | null;
 };
 
 const statusLabels: Record<AdminInvestorRow['status'], string> = {
@@ -126,41 +129,26 @@ function InvestorStatusBadge({ investor }: { investor: AdminInvestorRow }) {
   return <InsiderStatusBadge status={investor.status} />;
 }
 
-function accountNdaAriaLabel(status: NonNullable<AdminInvestorRow['accountNda']>['status']) {
-  return status === 'signed' ? 'NDA, signed' : 'NDA, pending';
+function accountNdaAriaLabel() {
+  return 'NDA, pending';
 }
 
 function canCopyNdaLink(accountNda: AdminInvestorRow['accountNda']) {
   return !accountNda || accountNda.status !== 'signed';
 }
 
-function accountNdaBadgeColor(
-  status: NonNullable<AdminInvestorRow['accountNda']>['status'],
-): BadgeColors {
-  if (status === 'signed') {
-    return 'success';
-  }
-
-  if (status === 'pending') {
-    return 'warning';
-  }
-
-  return 'gray';
-}
-
-// Derived account-NDA indicator. Signed → green; sent-but-not-signed → "Pending";
-// nothing rendered when no account NDA has been sent (keeps rows uncluttered).
+// Derived account-NDA indicator. Only shown when an account NDA was sent but not signed yet.
 function AccountNdaBadge({ accountNda }: { accountNda: AdminInvestorRow['accountNda'] }) {
-  if (!accountNda) {
+  if (!accountNda || accountNda.status !== 'pending') {
     return null;
   }
 
-  const ariaLabel = accountNdaAriaLabel(accountNda.status);
+  const ariaLabel = accountNdaAriaLabel();
 
   return (
     <span role="status" aria-label={ariaLabel} title={ariaLabel}>
       <span aria-hidden="true">
-        <Badge type="pill-color" size="sm" color={accountNdaBadgeColor(accountNda.status)}>
+        <Badge type="pill-color" size="sm" color="warning">
           NDA
         </Badge>
       </span>
@@ -237,16 +225,6 @@ function formatJoinedDate(value: string) {
     day: 'numeric',
     year: 'numeric',
   }).format(date);
-}
-
-function initialsForInvestor(investor: AdminInvestorRow) {
-  const source = investor.fullName || investor.email;
-  return source
-    .split(/[\s@.]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('');
 }
 
 function SectorIconRow({ sectors }: { sectors: InvestorSector[] }) {
@@ -487,6 +465,16 @@ function InvestorSlideout({
 
         <form action={handleSubmit} className="speevy-slideout-body">
           <input type="hidden" name="id" value={investor.id} />
+
+          <div className="fieldblock">
+            <AdminInvestorProfilePictureUpload
+              lpId={investor.id}
+              fullName={fullName || investor.fullName}
+              email={investor.email}
+              initialPhotoUrl={investor.profilePictureUrl}
+              onUploaded={onSaved}
+            />
+          </div>
 
           <div className="fieldblock">
             <label htmlFor="Investor-Status" className="fieldlabel">Status</label>
@@ -836,9 +824,11 @@ export function AdminInvestorsTable({
                       {isSelected ? <CheckIcon /> : null}
                     </button>
                   </div>
-                  <div className="profilesquare">
-                    <div>{initialsForInvestor(investor)}</div>
-                  </div>
+                  <InvestorProfileSquare
+                    fullName={investor.fullName}
+                    email={investor.email}
+                    photoUrl={investor.profilePictureUrl}
+                  />
                   <div>
                     <div className="cellname">{investor.fullName || investor.email}</div>
                     <div className="alignrow aligncenter" style={{ gap: '6px', flexWrap: 'wrap' }}>
@@ -868,9 +858,6 @@ export function AdminInvestorsTable({
                     >
                       <div>View / Edit</div>
                     </button>
-                    {canCopyNdaLink(investor.accountNda) ? (
-                      <CopyInvestorNdaLinkButton lpId={investor.id} />
-                    ) : null}
                   </div>
                 </div>
               </div>

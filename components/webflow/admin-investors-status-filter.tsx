@@ -33,6 +33,7 @@ export function AdminInvestorsStatusFilter({
     // Drop any open investor slideout selection; the targeted row may be
     // filtered out by the new status filter.
     params.delete('investor');
+    params.delete('page');
 
     const query = params.toString();
     startTransition(() => {

@@ -100,6 +100,7 @@ export const signatureStatus = pgEnum('signature_status', [
 
 export const auditAction = pgEnum('audit_action', [
   'lp.invited',
+  'lp.joined',
   'lp.approved',
   'lp.rejected',
   'lp.removed',
@@ -179,6 +180,7 @@ export const lps = pgTable('lps', {
   investmentRangeMinCents: bigint('investment_range_min_cents', { mode: 'number' }),
   investmentRangeMaxCents: bigint('investment_range_max_cents', { mode: 'number' }),
   internalNotes: text('internal_notes'),
+  profilePictureStorageKey: text('profile_picture_storage_key'),
 
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

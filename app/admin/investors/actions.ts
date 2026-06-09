@@ -4,11 +4,9 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
-import {
-  hasLoopsLpApprovedEnv,
-  sendLpApprovedEmail,
-} from '@/lib/loops/transactional';
+import { approvePendingLp } from '@/lib/admin/approve-lp';
 import { TAG_COLORS, type Tag } from '@/lib/lp-tags';
+import { buildNdaOnboardingUrl } from '@/lib/nda/tokens';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -31,49 +29,6 @@ const bulkApproveInvestorsSchema = z.object({
 export type UpdateInvestorResult =
   | { status: 'success'; message: string }
   | { status: 'error'; message: string };
-
-type ApprovedInvestorEmailRow = {
-  id: string;
-  email: string;
-  full_name: string | null;
-};
-
-function deriveFirstName(fullName: string | null, email: string) {
-  const trimmed = fullName?.trim();
-  if (trimmed) {
-    return trimmed.split(/\s+/)[0];
-  }
-  return email;
-}
-
-function logEmailFailures(label: string, results: PromiseSettledResult<unknown>[]) {
-  results.forEach((result) => {
-    if (result.status === 'rejected') {
-      console.error(`${label} failed:`, result.reason instanceof Error ? result.reason.message : result.reason);
-    }
-  });
-}
-
-async function sendLpApprovedEmails(investors: ApprovedInvestorEmailRow[], approvedAt: string) {
-  if (!hasLoopsLpApprovedEnv() || investors.length === 0) {
-    return;
-  }
-
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
-  const results = await Promise.allSettled(
-    investors.map((investor) =>
-      sendLpApprovedEmail({
-        approvedAt,
-        email: investor.email,
-        firstName: deriveFirstName(investor.full_name, investor.email),
-        investorName: investor.full_name || investor.email,
-        loginUrl: `${appUrl}/login`,
-        idempotencyKey: `lp-approved-${investor.id}-${approvedAt}`,
-      }),
-    ),
-  );
-  logEmailFailures('LP approved email', results);
-}
 
 async function ensureAdmin(): Promise<
   | { ok: true; message: string; userId: string }
@@ -148,16 +103,10 @@ export async function updateInvestor(formData: FormData): Promise<UpdateInvestor
     .update({
       full_name: data.fullName || null,
       entity_name: data.entityName || null,
-      status: data.status,
+      ...(shouldSendApprovalEmail ? {} : { status: data.status }),
       sectors_interested: data.sectors,
       investment_range_min_cents: minCents,
       investment_range_max_cents: maxCents,
-      ...(shouldSendApprovalEmail
-        ? {
-            approved_at: approvedAt,
-            approved_by_profile_id: auth.userId,
-          }
-        : {}),
       updated_at: approvedAt,
     })
     .eq('id', data.id);
@@ -167,13 +116,14 @@ export async function updateInvestor(formData: FormData): Promise<UpdateInvestor
   }
 
   if (shouldSendApprovalEmail) {
-    await sendLpApprovedEmails([
-      {
-        id: data.id,
-        email: existingInvestor.email,
-        full_name: data.fullName || existingInvestor?.full_name || null,
-      },
-    ], approvedAt);
+    const approval = await approvePendingLp(data.id, {
+      approvedByProfileId: auth.userId,
+      source: 'admin_ui',
+    });
+
+    if (!approval.ok) {
+      return { status: 'error', message: approval.message };
+    }
   }
 
   revalidatePath('/admin/investors');
@@ -231,6 +181,55 @@ export async function getInvestorSignedNdaUrl(
   return { status: 'success', url: signed.signedUrl };
 }
 
+const investorNdaLinkSchema = z.object({
+  lpId: z.string().uuid(),
+});
+
+export type InvestorNdaLinkResult =
+  | { status: 'success'; url: string }
+  | { status: 'error'; message: string };
+
+// Admin-only: mint a fresh account-NDA onboarding link for an investor who has
+// not signed yet. Each call issues a new 14-day token via createNdaOnboardingToken.
+export async function getInvestorNdaOnboardingUrl(
+  payload: z.input<typeof investorNdaLinkSchema>,
+): Promise<InvestorNdaLinkResult> {
+  const auth = await ensureAdmin();
+  if (!auth.ok) {
+    return { status: 'error', message: auth.message };
+  }
+
+  const parsed = investorNdaLinkSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { status: 'error', message: 'Select a valid investor.' };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: investor } = await supabase
+    .from('lps')
+    .select('id')
+    .eq('id', parsed.data.lpId)
+    .maybeSingle();
+
+  if (!investor) {
+    return { status: 'error', message: 'Investor could not be found.' };
+  }
+
+  const { data: signedAccountNda } = await supabase
+    .from('account_ndas')
+    .select('id')
+    .eq('lp_id', parsed.data.lpId)
+    .eq('status', 'signed')
+    .limit(1)
+    .maybeSingle();
+
+  if (signedAccountNda) {
+    return { status: 'error', message: 'This investor has already signed their account NDA.' };
+  }
+
+  return { status: 'success', url: buildNdaOnboardingUrl(parsed.data.lpId) };
+}
+
 export async function bulkApproveInvestors(ids: string[]): Promise<UpdateInvestorResult> {
   const auth = await ensureAdmin();
   if (!auth.ok) {
@@ -262,29 +261,16 @@ export async function bulkApproveInvestors(ids: string[]): Promise<UpdateInvesto
     return { status: 'error', message: 'Only investors pending review can be bulk approved.' };
   }
 
-  const now = new Date().toISOString();
-  const { error } = await supabase
-    .from('lps')
-    .update({
-      status: 'approved',
-      approved_at: now,
-      approved_by_profile_id: auth.userId,
-      updated_at: now,
-    })
-    .in('id', uniqueIds);
+  for (const id of uniqueIds) {
+    const approval = await approvePendingLp(id, {
+      approvedByProfileId: auth.userId,
+      source: 'admin_ui',
+    });
 
-  if (error) {
-    return { status: 'error', message: error.message };
+    if (!approval.ok) {
+      return { status: 'error', message: approval.message };
+    }
   }
-
-  await sendLpApprovedEmails(
-    (investors ?? []).map((investor) => ({
-      id: investor.id,
-      email: investor.email,
-      full_name: investor.full_name,
-    })),
-    now,
-  );
 
   revalidatePath('/admin/investors');
   return {

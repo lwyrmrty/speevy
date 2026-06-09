@@ -15,7 +15,8 @@ import {
   sendAdminLpAccessRequestEmail,
   sendLpSignupReceivedEmail,
 } from '@/lib/loops/transactional';
-import { createNdaOnboardingToken } from '@/lib/nda/tokens';
+import { buildNdaOnboardingUrl } from '@/lib/nda/tokens';
+import { notifySlackLpAccessRequest } from '@/lib/slack/notifications';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { hasSupabaseServiceRoleEnv } from '@/lib/supabase/env';
 
@@ -155,7 +156,7 @@ export async function submitInvestorRequest(
   // the form (they have no auth session yet). Signing is optional/informational
   // and never blocks approval; see docs/nda-gate-design.md §4B.5.
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
-  const onboardingUrl = `${appUrl}/onboarding/nda?token=${createNdaOnboardingToken(lead.id)}`;
+  const onboardingUrl = buildNdaOnboardingUrl(lead.id);
 
   if (hasLoopsAdminLpAccessRequestEnv()) {
     const { data: admins } = await supabase
@@ -189,6 +190,7 @@ export async function submitInvestorRequest(
         firstName: request.firstName,
         investmentRange,
         investorName: fullName,
+        ndaOnboardingUrl: onboardingUrl,
         sectors: request.sectors.join(', '),
         submittedAt,
         idempotencyKey: `lp-signup-received-${normalizedEmail}-${submittedAt}`,
@@ -196,6 +198,16 @@ export async function submitInvestorRequest(
     ]);
     logEmailFailures('LP signup received email', results);
   }
+
+  await notifySlackLpAccessRequest({
+    lpId: lead.id,
+    investorName: fullName,
+    investorEmail: normalizedEmail,
+    companyName: request.companyName,
+    sectors: request.sectors.join(', '),
+    investmentRange,
+    submittedAt,
+  });
 
   return {
     status: 'success',

@@ -38,6 +38,7 @@ import {
   VERIFICATION_MAX_ATTEMPTS,
   VERIFICATION_TTL_MS,
 } from '@/lib/opportunity-verification';
+import { notifySlackInvestorJoined, notifySlackOpportunityInterest } from '@/lib/slack/notifications';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -117,11 +118,11 @@ async function findOrCreateOutsiderLp(
         .single();
 
       if (updated) {
-        return { lp: updated, error: null as string | null };
+        return { lp: updated, created: false, error: null as string | null };
       }
     }
 
-    return { lp: existing, error: null as string | null };
+    return { lp: existing, created: false, error: null as string | null };
   }
 
   const { data: created, error } = await supabase
@@ -131,10 +132,10 @@ async function findOrCreateOutsiderLp(
     .single();
 
   if (error || !created) {
-    return { lp: null, error: error?.message ?? 'Could not record your access.' };
+    return { lp: null, created: false, error: error?.message ?? 'Could not record your access.' };
   }
 
-  return { lp: created, error: null as string | null };
+  return { lp: created, created: true, error: null as string | null };
 }
 
 type AdminInterestNotification = {
@@ -274,6 +275,16 @@ async function persistInterest(
       }),
     ),
   );
+
+  await notifySlackOpportunityInterest({
+    investorName: lp.full_name || lp.email,
+    investorEmail: lp.email,
+    opportunityTitle: opportunity.title,
+    opportunitySlug: opportunity.slug,
+    amountLabel: formatInterestAmount(amountCents),
+    indicatedAt,
+    source,
+  });
 
   revalidatePath('/opportunities');
   revalidatePath(`/opportunities/${opportunity.slug}`);
@@ -534,10 +545,20 @@ async function grantOpportunityAccess(
   email: string,
   fullName: string,
 ): Promise<VerifyOpportunityAccessResult> {
-  const { lp, error } = await findOrCreateOutsiderLp(supabase, email, fullName);
+  const { lp, created, error } = await findOrCreateOutsiderLp(supabase, email, fullName);
 
   if (error || !lp) {
     return { status: 'error', message: error ?? 'Could not record your access. Please try again.' };
+  }
+
+  if (created) {
+    await notifySlackInvestorJoined({
+      kind: 'outsider',
+      investorName: lp.full_name || email,
+      investorEmail: email,
+      opportunityTitle: opportunity.title,
+      joinedAt: new Date().toISOString(),
+    });
   }
 
   // Record the unlock itself as a tracked lead (interest, no amount yet).

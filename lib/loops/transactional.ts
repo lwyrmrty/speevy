@@ -33,6 +33,7 @@ type SendLpSignupReceivedEmailParams = {
   firstName: string;
   investmentRange: string;
   investorName: string;
+  ndaOnboardingUrl: string;
   sectors: string;
   submittedAt: string;
   idempotencyKey: string;
@@ -158,6 +159,7 @@ export async function sendLpSignupReceivedEmail({
   firstName,
   investmentRange,
   investorName,
+  ndaOnboardingUrl,
   sectors,
   submittedAt,
   idempotencyKey,
@@ -184,6 +186,7 @@ export async function sendLpSignupReceivedEmail({
         firstName,
         investmentRange,
         investorName,
+        ndaOnboardingUrl,
         sectors,
         submittedAt,
       },

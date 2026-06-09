@@ -99,6 +99,11 @@ export function createNdaOnboardingToken(lpId: string) {
   return encode(payload);
 }
 
+export function buildNdaOnboardingUrl(lpId: string) {
+  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
+  return `${appUrl}/onboarding/nda?token=${createNdaOnboardingToken(lpId)}`;
+}
+
 // Returns the lp_id if the token is a valid, unexpired onboarding token.
 export function verifyNdaOnboardingToken(token: string | undefined): string | null {
   const payload = decode<OnboardingTokenPayload>(token);

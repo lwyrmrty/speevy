@@ -9,6 +9,7 @@ import {
   updateInvestor,
   type UpdateInvestorResult,
 } from '@/app/admin/investors/actions';
+import { CopyInvestorNdaLinkButton } from '@/components/webflow/copy-investor-nda-link-button';
 import { Badge } from '@/components/base/badges/badges';
 import type { BadgeColors } from '@/components/base/badges/badge-types';
 import { LpTagBadge, LpTagEditor } from '@/components/webflow/lp-tag-editor';
@@ -127,6 +128,10 @@ function InvestorStatusBadge({ investor }: { investor: AdminInvestorRow }) {
 
 function accountNdaAriaLabel(status: NonNullable<AdminInvestorRow['accountNda']>['status']) {
   return status === 'signed' ? 'NDA, signed' : 'NDA, pending';
+}
+
+function canCopyNdaLink(accountNda: AdminInvestorRow['accountNda']) {
+  return !accountNda || accountNda.status !== 'signed';
 }
 
 function accountNdaBadgeColor(
@@ -570,6 +575,14 @@ function InvestorSlideout({
 
           <div className="fieldblock">
             <div className="fieldlabel">Signed NDAs</div>
+            {canCopyNdaLink(investor.accountNda) ? (
+              <div className="speevy-slideout-inline-action" style={{ marginBottom: '12px' }}>
+                <CopyInvestorNdaLinkButton
+                  lpId={investor.id}
+                  className="button short secondary w-inline-block"
+                />
+              </div>
+            ) : null}
             <SignedNdasSection ndas={investor.signedNdas} />
           </div>
 
@@ -847,13 +860,18 @@ export function AdminInvestorsTable({
                   <div>{formatCheckRange(investor.investmentRangeMin, investor.investmentRangeMax)}</div>
                 </div>
                 <div className="tablecell actions">
-                  <button
-                    type="button"
-                    className="actionlinks w-inline-block"
-                    onClick={() => setSelectedInvestorId(investor.id)}
-                  >
-                    <div>View / Edit</div>
-                  </button>
+                  <div className="alignrow wrap">
+                    <button
+                      type="button"
+                      className="actionlinks w-inline-block"
+                      onClick={() => setSelectedInvestorId(investor.id)}
+                    >
+                      <div>View / Edit</div>
+                    </button>
+                    {canCopyNdaLink(investor.accountNda) ? (
+                      <CopyInvestorNdaLinkButton lpId={investor.id} />
+                    ) : null}
+                  </div>
                 </div>
               </div>
             );

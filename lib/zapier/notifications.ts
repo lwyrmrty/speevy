@@ -1,4 +1,9 @@
 import {
+  buildOpportunityFillSummary,
+  formatCompactUsdFromCents,
+  formatWholeUsdFromCents,
+} from '@/lib/opportunity-interest-summary';
+import {
   getZapierLpAccessRequestWebhookUrl,
   getZapierOpportunityInterestWebhookUrl,
   hasZapierLpAccessRequestWebhookEnv,
@@ -57,6 +62,10 @@ export async function notifyZapierOpportunityInterest(input: {
   amountLabel: string;
   indicatedAt: string;
   source: 'lp' | 'password_gate';
+  isUpdate: boolean;
+  investorCount: number;
+  totalInterestCents: number;
+  targetAllocationCents: number | null;
 }): Promise<void> {
   if (!hasZapierOpportunityInterestWebhookEnv()) {
     return;
@@ -65,10 +74,18 @@ export async function notifyZapierOpportunityInterest(input: {
   const adminInterestUrl = `${appBaseUrl()}/admin/opportunities/${input.opportunitySlug}/interest`;
   const opportunityUrl = `${appBaseUrl()}/opportunities/${input.opportunitySlug}`;
   const sourceLabel = input.source === 'password_gate' ? 'Outsider (password gate)' : 'Approved LP';
+  const fillSummary = buildOpportunityFillSummary(
+    input.totalInterestCents,
+    input.targetAllocationCents,
+  );
+  const fillPercent = input.targetAllocationCents && input.targetAllocationCents > 0
+    ? Math.round((input.totalInterestCents / input.targetAllocationCents) * 100)
+    : null;
 
   try {
     await postZapierCatchHook(getZapierOpportunityInterestWebhookUrl(), {
       event: 'opportunity_interest',
+      interest_kind: input.isUpdate ? 'updated' : 'new',
       investor_name: input.investorName,
       investor_email: input.investorEmail,
       opportunity_title: input.opportunityTitle,
@@ -78,6 +95,19 @@ export async function notifyZapierOpportunityInterest(input: {
       indicated_at: input.indicatedAt,
       admin_interest_url: adminInterestUrl,
       opportunity_url: opportunityUrl,
+      investor_count: input.investorCount,
+      total_interest_cents: input.totalInterestCents,
+      total_interest_label: formatWholeUsdFromCents(input.totalInterestCents),
+      total_interest_compact: formatCompactUsdFromCents(input.totalInterestCents),
+      target_allocation_cents: input.targetAllocationCents,
+      target_allocation_label: input.targetAllocationCents
+        ? formatWholeUsdFromCents(input.targetAllocationCents)
+        : null,
+      target_allocation_compact: input.targetAllocationCents
+        ? formatCompactUsdFromCents(input.targetAllocationCents)
+        : null,
+      fill_summary: fillSummary,
+      fill_percent: fillPercent,
     });
   } catch (error) {
     logZapierFailure('Zapier opportunity interest notification', error);

@@ -38,6 +38,10 @@ import {
   VERIFICATION_MAX_ATTEMPTS,
   VERIFICATION_TTL_MS,
 } from '@/lib/opportunity-verification';
+import {
+  centsToNumber,
+  getOpportunityInterestTotals,
+} from '@/lib/opportunity-interest-summary';
 import { notifySlackInvestorJoined } from '@/lib/slack/notifications';
 import { notifyZapierOpportunityInterest } from '@/lib/zapier/notifications';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
@@ -204,6 +208,7 @@ type InterestOpportunity = {
   id: string;
   slug: string;
   title: string;
+  target_allocation_cents: number | string | null;
 };
 
 // Shared "record this LP's interest in this opportunity" path. Callers are
@@ -227,6 +232,15 @@ async function persistInterest(
   },
 ): Promise<SaveOpportunityInterestResult> {
   const indicatedAt = new Date().toISOString();
+  const { data: existingInterest } = await supabase
+    .from('interests')
+    .select('id')
+    .eq('opportunity_id', opportunity.id)
+    .eq('lp_id', lp.id)
+    .neq('status', 'withdrawn')
+    .maybeSingle();
+  const isUpdate = Boolean(existingInterest);
+
   const { error } = await supabase
     .from('interests')
     .upsert(
@@ -277,6 +291,12 @@ async function persistInterest(
     ),
   );
 
+  const { investorCount, totalInterestCents } = await getOpportunityInterestTotals(
+    supabase,
+    opportunity.id,
+  );
+  const targetAllocationCents = centsToNumber(opportunity.target_allocation_cents);
+
   await notifyZapierOpportunityInterest({
     investorName: lp.full_name || lp.email,
     investorEmail: lp.email,
@@ -285,6 +305,10 @@ async function persistInterest(
     amountLabel: formatInterestAmount(amountCents),
     indicatedAt,
     source,
+    isUpdate,
+    investorCount,
+    totalInterestCents,
+    targetAllocationCents: targetAllocationCents > 0 ? targetAllocationCents : null,
   });
 
   revalidatePath('/opportunities');
@@ -373,7 +397,7 @@ async function saveGuestOpportunityInterest(
   const supabase = createSupabaseAdminClient();
   const { data: opportunity } = await supabase
     .from('opportunities')
-    .select('id, slug, title, status, published_at, password_protected')
+    .select('id, slug, title, status, published_at, password_protected, target_allocation_cents')
     .eq('id', opportunityId)
     .maybeSingle();
 
@@ -449,7 +473,7 @@ export async function saveOpportunityInterest(
 
   const { data: opportunity } = await supabase
     .from('opportunities')
-    .select('id, slug, title, status')
+    .select('id, slug, title, status, target_allocation_cents')
     .eq('id', parsed.data.opportunityId)
     .maybeSingle();
 
@@ -490,6 +514,7 @@ type UnlockableOpportunity = {
   status: string;
   published_at: string | null;
   password_protected: boolean;
+  target_allocation_cents: number | string | null;
 };
 
 // Load a password-protected opportunity that is currently shareable, or null.
@@ -501,7 +526,7 @@ async function loadUnlockableOpportunity(
 ): Promise<UnlockableOpportunity | null> {
   const { data: opportunity } = await supabase
     .from('opportunities')
-    .select('id, slug, title, status, published_at, password_protected')
+    .select('id, slug, title, status, published_at, password_protected, target_allocation_cents')
     .eq('slug', slug)
     .is('archived_at', null)
     .maybeSingle();

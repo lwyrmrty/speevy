@@ -6,6 +6,7 @@ import {
   getAccountNdaCeremonyForOutsider,
   getOutsiderAccountNdaGateState,
 } from '@/app/account/nda/actions';
+import { GlanceChatWidget } from '@/components/glance-chat-widget';
 import { DocumentViewerDrawer } from '@/components/webflow/document-viewer-drawer';
 import { OpportunityInterestCard } from '@/components/webflow/opportunity-interest-card';
 import { OpportunityPasswordGate } from '@/components/webflow/opportunity-password-gate';
@@ -1168,6 +1169,8 @@ export default async function OpportunityPreviewPage({
             </div>
           </div>
         </div>
+        {/* Logged-in viewers only — guest shared-link views must not load the widget. */}
+        {isGuest ? null : <GlanceChatWidget />}
       </div>
     </>
   );

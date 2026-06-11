@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
+import { GlanceChatWidget } from '@/components/glance-chat-widget';
 import { SectionMiniNav } from '@/components/webflow/section-mini-nav';
 import { InvestorProfileSquare } from '@/components/webflow/investor-profile-square';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
@@ -774,6 +775,7 @@ export default async function OpportunitiesHomePage() {
             </div>
           </div>
         </div>
+        <GlanceChatWidget />
       </div>
     </>
   );

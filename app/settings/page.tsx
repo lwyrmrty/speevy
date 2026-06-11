@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
+import { GlanceChatWidget } from '@/components/glance-chat-widget';
 import { LpSettingsForm } from '@/components/settings/lp-settings-form';
 import { InvestorProfileSquare } from '@/components/webflow/investor-profile-square';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
@@ -209,6 +210,7 @@ export default async function SettingsPage() {
             </div>
           </div>
         </div>
+        <GlanceChatWidget />
       </div>
     </>
   );

@@ -16,7 +16,7 @@ import {
   sendLpSignupReceivedEmail,
 } from '@/lib/loops/transactional';
 import { buildNdaOnboardingUrl } from '@/lib/nda/tokens';
-import { notifySlackLpAccessRequest } from '@/lib/slack/notifications';
+import { notifyZapierLpAccessRequest } from '@/lib/zapier/notifications';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { hasSupabaseServiceRoleEnv } from '@/lib/supabase/env';
 
@@ -223,7 +223,7 @@ export async function submitInvestorRequest(
     logEmailFailures('LP signup received email', results);
   }
 
-  await notifySlackLpAccessRequest({
+  await notifyZapierLpAccessRequest({
     lpId: lead.id,
     investorName: fullName,
     investorEmail: normalizedEmail,

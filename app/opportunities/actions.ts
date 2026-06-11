@@ -38,7 +38,8 @@ import {
   VERIFICATION_MAX_ATTEMPTS,
   VERIFICATION_TTL_MS,
 } from '@/lib/opportunity-verification';
-import { notifySlackInvestorJoined, notifySlackOpportunityInterest } from '@/lib/slack/notifications';
+import { notifySlackInvestorJoined } from '@/lib/slack/notifications';
+import { notifyZapierOpportunityInterest } from '@/lib/zapier/notifications';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -276,7 +277,7 @@ async function persistInterest(
     ),
   );
 
-  await notifySlackOpportunityInterest({
+  await notifyZapierOpportunityInterest({
     investorName: lp.full_name || lp.email,
     investorEmail: lp.email,
     opportunityTitle: opportunity.title,

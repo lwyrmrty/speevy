@@ -59,7 +59,7 @@ export default async function AdminCompanyPage() {
                 </div>
               </div>
 
-              <div>
+              <div className="speevy-responsive-rows">
                 <div className="tablerow headerrow">
                   <div className="tablecell first">Name</div>
                   <div className="tablecell wide">Email</div>

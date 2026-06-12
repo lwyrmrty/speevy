@@ -2,6 +2,7 @@ import {
   hasLoopsLpApprovedEnv,
   sendLpApprovedEmail,
 } from '@/lib/loops/transactional';
+import { buildAppUrl } from '@/lib/app-url';
 import { notifySlackInvestorJoined } from '@/lib/slack/notifications';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
@@ -42,14 +43,13 @@ async function sendLpApprovedEmailForInvestor(
     return;
   }
 
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
   try {
     await sendLpApprovedEmail({
       approvedAt,
       email: investor.email,
       firstName: deriveFirstName(investor.full_name, investor.email),
       investorName: investor.full_name || investor.email,
-      loginUrl: `${appUrl}/login`,
+      loginUrl: buildAppUrl('/login'),
       idempotencyKey: `lp-approved-${investor.id}-${approvedAt}`,
     });
   } catch (error) {

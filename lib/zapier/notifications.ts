@@ -1,3 +1,4 @@
+import { getAppUrl } from '@/lib/app-url';
 import {
   buildOpportunityFillSummary,
   formatCompactUsdFromCents,
@@ -10,10 +11,6 @@ import {
   hasZapierOpportunityInterestWebhookEnv,
 } from '@/lib/zapier/env';
 import { postZapierCatchHook } from '@/lib/zapier/webhook';
-
-function appBaseUrl() {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
-}
 
 function logZapierFailure(label: string, error: unknown) {
   console.error(
@@ -35,7 +32,7 @@ export async function notifyZapierLpAccessRequest(input: {
     return;
   }
 
-  const adminInvestorsUrl = `${appBaseUrl()}/admin/investors`;
+  const adminInvestorsUrl = `${getAppUrl()}/admin/investors`;
 
   try {
     await postZapierCatchHook(getZapierLpAccessRequestWebhookUrl(), {
@@ -71,8 +68,8 @@ export async function notifyZapierOpportunityInterest(input: {
     return;
   }
 
-  const adminInterestUrl = `${appBaseUrl()}/admin/opportunities/${input.opportunitySlug}/interest`;
-  const opportunityUrl = `${appBaseUrl()}/opportunities/${input.opportunitySlug}`;
+  const adminInterestUrl = `${getAppUrl()}/admin/opportunities/${input.opportunitySlug}/interest`;
+  const opportunityUrl = `${getAppUrl()}/opportunities/${input.opportunitySlug}`;
   const sourceLabel = input.source === 'password_gate' ? 'Outsider (password gate)' : 'Approved LP';
   const fillSummary = buildOpportunityFillSummary(
     input.totalInterestCents,

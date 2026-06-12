@@ -59,6 +59,42 @@ type SendNdaSignedCopyEmailParams = {
   idempotencyKey: string;
 };
 
+type SendLpOpportunityUpdatedEmailParams = {
+  email: string;
+  firstName: string;
+  investorName: string;
+  opportunityTitle: string;
+  opportunityUrl: string;
+  updateCount: string;
+  updateHeadline: string;
+  updateSummary: string;
+  idempotencyKey: string;
+};
+
+type SendLpMatchingOpportunityEmailParams = {
+  email: string;
+  firstName: string;
+  investorName: string;
+  opportunityTitle: string;
+  opportunityUrl: string;
+  opportunityTeaser: string;
+  matchingSectors: string;
+  idempotencyKey: string;
+};
+
+type SendLpOpportunityStatusChangedEmailParams = {
+  email: string;
+  firstName: string;
+  investorName: string;
+  opportunityTitle: string;
+  opportunityUrl: string;
+  previousStatus: string;
+  newStatus: string;
+  statusChangeSummary: string;
+  matchingSectors: string;
+  idempotencyKey: string;
+};
+
 function getLoopsApiKey() {
   return process.env.LOOPS_API_KEY;
 }
@@ -87,6 +123,18 @@ function getNdaSignedTemplateId() {
   return process.env.LOOPS_TEMPLATE_NDA_SIGNED;
 }
 
+function getLpOpportunityUpdatedTemplateId() {
+  return process.env.LOOPS_TEMPLATE_LP_OPPORTUNITY_UPDATED;
+}
+
+function getLpMatchingOpportunityTemplateId() {
+  return process.env.LOOPS_TEMPLATE_LP_MATCHING_OPPORTUNITY;
+}
+
+function getLpOpportunityStatusChangedTemplateId() {
+  return process.env.LOOPS_TEMPLATE_LP_OPPORTUNITY_STATUS_CHANGED;
+}
+
 export function hasLoopsLoginCodeEnv() {
   return Boolean(getLoopsApiKey() && getLoginCodeTemplateId());
 }
@@ -109,6 +157,18 @@ export function hasLoopsLpApprovedEnv() {
 
 export function hasLoopsNdaSignedEnv() {
   return Boolean(getLoopsApiKey() && getNdaSignedTemplateId());
+}
+
+export function hasLoopsLpOpportunityUpdatedEnv() {
+  return Boolean(getLoopsApiKey() && getLpOpportunityUpdatedTemplateId());
+}
+
+export function hasLoopsLpMatchingOpportunityEnv() {
+  return Boolean(getLoopsApiKey() && getLpMatchingOpportunityTemplateId());
+}
+
+export function hasLoopsLpOpportunityStatusChangedEnv() {
+  return Boolean(getLoopsApiKey() && getLpOpportunityStatusChangedTemplateId());
 }
 
 export async function sendLoginCodeEmail({
@@ -351,6 +411,174 @@ export async function sendLpApprovedEmail({
         firstName,
         investorName,
         loginUrl,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    let message = `Loops transactional email failed with status ${response.status}.`;
+
+    try {
+      const body = await response.json();
+      if (typeof body?.message === 'string') {
+        message = body.message;
+      }
+    } catch {
+      // Keep the status-based message if Loops returns a non-JSON response.
+    }
+
+    throw new Error(message);
+  }
+}
+
+export async function sendLpOpportunityUpdatedEmail({
+  email,
+  firstName,
+  investorName,
+  opportunityTitle,
+  opportunityUrl,
+  updateCount,
+  updateHeadline,
+  updateSummary,
+  idempotencyKey,
+}: SendLpOpportunityUpdatedEmailParams) {
+  const apiKey = getLoopsApiKey();
+  const transactionalId = getLpOpportunityUpdatedTemplateId();
+
+  if (!apiKey || !transactionalId) {
+    throw new Error('Loops LP opportunity updated email environment variables are not configured.');
+  }
+
+  const response = await fetch('https://app.loops.so/api/v1/transactional', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify({
+      transactionalId,
+      email,
+      dataVariables: {
+        firstName,
+        investorName,
+        opportunityTitle,
+        opportunityUrl,
+        updateCount,
+        updateHeadline,
+        updateSummary,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    let message = `Loops transactional email failed with status ${response.status}.`;
+
+    try {
+      const body = await response.json();
+      if (typeof body?.message === 'string') {
+        message = body.message;
+      }
+    } catch {
+      // Keep the status-based message if Loops returns a non-JSON response.
+    }
+
+    throw new Error(message);
+  }
+}
+
+export async function sendLpOpportunityStatusChangedEmail({
+  email,
+  firstName,
+  investorName,
+  opportunityTitle,
+  opportunityUrl,
+  previousStatus,
+  newStatus,
+  statusChangeSummary,
+  matchingSectors,
+  idempotencyKey,
+}: SendLpOpportunityStatusChangedEmailParams) {
+  const apiKey = getLoopsApiKey();
+  const transactionalId = getLpOpportunityStatusChangedTemplateId();
+
+  if (!apiKey || !transactionalId) {
+    throw new Error('Loops LP opportunity status changed email environment variables are not configured.');
+  }
+
+  const response = await fetch('https://app.loops.so/api/v1/transactional', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify({
+      transactionalId,
+      email,
+      dataVariables: {
+        firstName,
+        investorName,
+        opportunityTitle,
+        opportunityUrl,
+        previousStatus,
+        newStatus,
+        statusChangeSummary,
+        matchingSectors,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    let message = `Loops transactional email failed with status ${response.status}.`;
+
+    try {
+      const body = await response.json();
+      if (typeof body?.message === 'string') {
+        message = body.message;
+      }
+    } catch {
+      // Keep the status-based message if Loops returns a non-JSON response.
+    }
+
+    throw new Error(message);
+  }
+}
+
+export async function sendLpMatchingOpportunityEmail({
+  email,
+  firstName,
+  investorName,
+  opportunityTitle,
+  opportunityUrl,
+  opportunityTeaser,
+  matchingSectors,
+  idempotencyKey,
+}: SendLpMatchingOpportunityEmailParams) {
+  const apiKey = getLoopsApiKey();
+  const transactionalId = getLpMatchingOpportunityTemplateId();
+
+  if (!apiKey || !transactionalId) {
+    throw new Error('Loops LP matching opportunity email environment variables are not configured.');
+  }
+
+  const response = await fetch('https://app.loops.so/api/v1/transactional', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify({
+      transactionalId,
+      email,
+      dataVariables: {
+        firstName,
+        investorName,
+        opportunityTitle,
+        opportunityUrl,
+        opportunityTeaser,
+        matchingSectors,
       },
     }),
   });

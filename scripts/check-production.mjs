@@ -1,4 +1,4 @@
-const baseUrl = (process.env.PRODUCTION_URL ?? 'https://speevy.vc').replace(/\/$/, '');
+const baseUrl = (process.env.PRODUCTION_URL ?? 'https://spv.harpoon.vc').replace(/\/$/, '');
 
 const checks = [
   { path: '/', status: 200 },

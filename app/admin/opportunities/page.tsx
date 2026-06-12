@@ -9,7 +9,7 @@ import {
 } from '@/lib/pagination';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
-type OpportunityStatus = 'active' | 'potential' | 'coming_soon' | 'draft' | 'closed';
+type OpportunityStatus = 'active' | 'potential' | 'upcoming' | 'draft' | 'closed';
 
 type OpportunityRow = {
   id: string;
@@ -33,7 +33,7 @@ type ViewRow = {
 const statusLabels: Record<OpportunityStatus, string> = {
   active: 'Active',
   potential: 'Potential',
-  coming_soon: 'Coming Soon',
+  upcoming: 'Upcoming',
   draft: 'Draft',
   closed: 'Closed',
 };
@@ -41,7 +41,7 @@ const statusLabels: Record<OpportunityStatus, string> = {
 const statusClasses: Record<OpportunityStatus, string> = {
   active: 'cellstatus',
   potential: 'cellstatus potential',
-  coming_soon: 'cellstatus potential',
+  upcoming: 'cellstatus potential',
   draft: 'cellstatus draft',
   closed: 'cellstatus closed',
 };
@@ -51,7 +51,7 @@ const statusClasses: Record<OpportunityStatus, string> = {
 const statusSortOrder: Record<OpportunityStatus, number> = {
   active: 0,
   potential: 1,
-  coming_soon: 1,
+  upcoming: 1,
   draft: 2,
   closed: 3,
 };
@@ -212,7 +212,7 @@ export default async function AdminOpportunitiesPage({
                 <div>Create New</div>
               </Link>
             </div>
-            <div className="contenttable">
+            <div className="contenttable speevy-responsive-table">
               <div className="tablerow headerrow">
                 <div className="tablecell first">
                   <div className="interestchecks-row spacing">

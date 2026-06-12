@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { buildAppUrl } from '@/lib/app-url';
 import {
   hasLoopsLpApprovedEnv,
   sendLpApprovedEmail,
@@ -79,7 +80,6 @@ export async function POST(request: Request) {
   }
 
   if (hasLoopsLpApprovedEnv()) {
-    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
     const results = await Promise.allSettled(
       (investors ?? []).map((investor) =>
         sendLpApprovedEmail({
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
           email: investor.email,
           firstName: investor.full_name?.trim().split(/\s+/)[0] || investor.email,
           investorName: investor.full_name || investor.email,
-          loginUrl: `${appUrl}/login`,
+          loginUrl: buildAppUrl('/login'),
           idempotencyKey: `lp-approved-${investor.id}-${now}`,
         }),
       ),

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Webhook, WebhookVerificationError } from 'standardwebhooks';
 
+import { buildAppUrl } from '@/lib/app-url';
 import { hasLoopsNdaSignedEnv, sendNdaSignedCopyEmail } from '@/lib/loops/transactional';
 import { createNdaDownloadToken } from '@/lib/nda/tokens';
 import {
@@ -417,8 +418,7 @@ async function sendSignedCopyEmailSafe(args: {
       if (title) ndaName = `${title} NDA`;
     }
 
-    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
-    const downloadUrl = `${appUrl}/nda/download/${createNdaDownloadToken(tier, rowId)}`;
+    const downloadUrl = buildAppUrl(`/nda/download/${createNdaDownloadToken(tier, rowId)}`);
 
     await sendNdaSignedCopyEmail({
       email: lp.email,

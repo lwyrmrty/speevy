@@ -1,11 +1,8 @@
+import { getAppUrl } from '@/lib/app-url';
 import { postSlackMessage } from '@/lib/slack/client';
 import { hasSlackNotificationsEnv } from '@/lib/slack/env';
 
 export const SLACK_ACTION_APPROVE_LP = 'approve_lp_access_request';
-
-function appBaseUrl() {
-  return (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
-}
 
 function logSlackFailure(label: string, error: unknown) {
   console.error(
@@ -27,7 +24,7 @@ export async function notifySlackLpAccessRequest(input: {
     return;
   }
 
-  const adminUrl = `${appBaseUrl()}/admin/investors`;
+  const adminUrl = `${getAppUrl()}/admin/investors`;
   const approveValue = JSON.stringify({ lpId: input.lpId });
 
   try {
@@ -87,7 +84,7 @@ export async function notifySlackInvestorJoined(input: {
   }
 
   const label = input.kind === 'outsider' ? 'Outsider joined' : 'Investor approved';
-  const adminUrl = `${appBaseUrl()}/admin/investors`;
+  const adminUrl = `${getAppUrl()}/admin/investors`;
   const fields: Array<{ type: 'mrkdwn'; text: string }> = [
     { type: 'mrkdwn', text: `*Name*\n${input.investorName}` },
     { type: 'mrkdwn', text: `*Email*\n${input.investorEmail}` },
@@ -142,8 +139,8 @@ export async function notifySlackOpportunityInterest(input: {
     return;
   }
 
-  const adminUrl = `${appBaseUrl()}/admin/opportunities/${input.opportunitySlug}/interest`;
-  const opportunityUrl = `${appBaseUrl()}/opportunities/${input.opportunitySlug}`;
+  const adminUrl = `${getAppUrl()}/admin/opportunities/${input.opportunitySlug}/interest`;
+  const opportunityUrl = `${getAppUrl()}/opportunities/${input.opportunitySlug}`;
   const sourceLabel = input.source === 'password_gate' ? 'Outsider (password gate)' : 'Approved LP';
 
   try {
@@ -194,7 +191,7 @@ export function buildApprovedAccessRequestBlocks(input: {
   approvedByLabel: string;
   approvedAt: string;
 }) {
-  const adminUrl = `${appBaseUrl()}/admin/investors`;
+  const adminUrl = `${getAppUrl()}/admin/investors`;
 
   return {
     text: `Approved: ${input.investorName} (${input.investorEmail})`,

@@ -17,6 +17,7 @@
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
+import { buildAppUrl } from '@/lib/app-url';
 import { getSupabaseServiceRoleKey } from '@/lib/supabase/env';
 
 if (typeof window !== 'undefined') {
@@ -100,8 +101,7 @@ export function createNdaOnboardingToken(lpId: string) {
 }
 
 export function buildNdaOnboardingUrl(lpId: string) {
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
-  return `${appUrl}/onboarding/nda?token=${createNdaOnboardingToken(lpId)}`;
+  return buildAppUrl(`/onboarding/nda?token=${createNdaOnboardingToken(lpId)}`);
 }
 
 // Returns the lp_id if the token is a valid, unexpired onboarding token.

@@ -21,12 +21,13 @@ import {
   saveOpportunityDraft,
   uploadOpportunityAsset,
 } from '@/app/admin/opportunities/actions';
+import { buildAppUrl } from '@/lib/app-url';
 import { Select } from '@/components/base/select/select';
 import { WebflowPasswordField } from '@/components/webflow/password-field';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
 
-type OpportunityStatus = 'draft' | 'potential' | 'coming_soon' | 'active' | 'closed';
+type OpportunityStatus = 'draft' | 'potential' | 'upcoming' | 'active' | 'closed';
 type SectionType = 'richContent' | 'links' | 'media' | 'documents' | 'team' | 'investors';
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
@@ -48,6 +49,7 @@ export type OpportunityEditorInitialData = {
   ndaTemplates?: NdaTemplateOption[];
   opportunity?: {
     status: OpportunityStatus;
+    comingSoon: boolean;
     title: string;
     teaser: string | null;
     sectors: string[] | null;
@@ -100,7 +102,7 @@ type CheckboxRowProps = {
 const statusLabels: Record<OpportunityStatus, string> = {
   draft: 'Draft',
   potential: 'Potential',
-  coming_soon: 'Coming Soon',
+  upcoming: 'Upcoming',
   active: 'Active',
   closed: 'Closed',
 };
@@ -108,7 +110,7 @@ const statusLabels: Record<OpportunityStatus, string> = {
 const statusPillClass: Record<OpportunityStatus, string> = {
   draft: 'selectpill draft',
   potential: 'selectpill',
-  coming_soon: 'selectpill',
+  upcoming: 'selectpill',
   active: 'selectpill active',
   closed: 'selectpill closed',
 };
@@ -116,7 +118,7 @@ const statusPillClass: Record<OpportunityStatus, string> = {
 const statusIconClass: Record<OpportunityStatus, string> = {
   draft: 'selectlink-icon orange',
   potential: 'selectlink-icon',
-  coming_soon: 'selectlink-icon',
+  upcoming: 'selectlink-icon',
   active: 'selectlink-icon green',
   closed: 'selectlink-icon',
 };
@@ -127,7 +129,7 @@ const defaultHeroCover = '/webflow/images/nnnoise-1.svg';
 
 const sectionTypeLabels: Record<SectionType, string> = {
   richContent: 'Rich Text',
-  links: 'Links',
+  links: 'News and Milestones',
   media: 'Media',
   documents: 'Documents',
   team: 'Team',
@@ -430,7 +432,7 @@ function SectionCardEditor({
           {section.type === 'richContent' ? (
             <RichTextDrawer initialData={section.data} />
           ) : section.type === 'links' ? (
-            <LinksDrawer
+            <NewsAndMilestonesDrawer
               initialData={section.data}
               uploadSlug={uploadSlug}
               onDirty={onDirty}
@@ -737,7 +739,7 @@ function UploadButton({
   );
 }
 
-function LinksDrawer({
+function NewsAndMilestonesDrawer({
   initialData,
   uploadSlug,
   onDirty,
@@ -750,8 +752,15 @@ function LinksDrawer({
 }) {
   const linkTitles = stringValues(initialData?.['Link-Title']);
   const linkUrls = stringValues(initialData?.['Link-Url']);
+  const linkDates = stringValues(initialData?.['Link-Date']);
   const linkImages = stringValues(initialData?.['Link-Image-Storage-Key']);
-  const initialItemCount = Math.max(linkTitles.length, linkUrls.length, linkImages.length, 1);
+  const initialItemCount = Math.max(
+    linkTitles.length,
+    linkUrls.length,
+    linkDates.length,
+    linkImages.length,
+    1,
+  );
   const initialItems = Array.from({ length: initialItemCount }, (_, index) => ({ id: index + 1 }));
   const [items, setItems] = useState<RepeaterItem[]>(initialItems);
   const [nextId, setNextId] = useState(initialItems.length + 1);
@@ -783,7 +792,7 @@ function LinksDrawer({
             <div className="prompt-block">
               <div className="alignrow aligncenter">
                 <UploadButton
-                  label="Upload link thumbnail"
+                  label="Upload thumbnail"
                   name="Link-Image-Storage-Key"
                   initialStorageKey={linkImages[index] ?? ''}
                   slug={uploadSlug}
@@ -799,13 +808,21 @@ function LinksDrawer({
                   type="text"
                   defaultValue={linkTitles[index] ?? ''}
                 />
+                <input
+                  className="formfields w-input"
+                  name="Link-Date"
+                  data-name="Link Date"
+                  placeholder="Date"
+                  type="date"
+                  defaultValue={linkDates[index] ?? ''}
+                />
               </div>
               <input
                 className="formfields urlfield w-input"
                 maxLength={256}
                 name="Link-Url"
                 data-name="Link URL"
-                placeholder="Content link"
+                placeholder="Article or milestone link"
                 type="url"
                 defaultValue={linkUrls[index] ?? ''}
               />
@@ -830,7 +847,7 @@ function LinksDrawer({
           setNextId((current) => current + 1);
         }}
       >
-        <div>Add New Link</div>
+        <div>Add News or Milestone</div>
       </button>
     </div>
   );
@@ -1722,18 +1739,10 @@ function CheckboxRow({ label, checked, onChange }: CheckboxRowProps) {
 }
 
 function getOpportunityLink(slug: string) {
-  const path = `/opportunities/${slug}`;
-  const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  const fallbackOrigin = window.location.origin;
-
-  if (!configuredAppUrl) {
-    return new URL(path, fallbackOrigin).toString();
-  }
-
   try {
-    return new URL(path, configuredAppUrl).toString();
+    return buildAppUrl(`/opportunities/${slug}`);
   } catch {
-    return new URL(path, fallbackOrigin).toString();
+    return new URL(`/opportunities/${slug}`, window.location.origin).toString();
   }
 }
 
@@ -1859,7 +1868,7 @@ function StatusDropdown({
   onChange: (status: OpportunityStatus) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const options: OpportunityStatus[] = ['draft', 'potential', 'coming_soon', 'active', 'closed'];
+  const options: OpportunityStatus[] = ['draft', 'potential', 'upcoming', 'active', 'closed'];
 
   return (
     <div className="dropdownblocks full">
@@ -1918,6 +1927,7 @@ export function OpportunityEditor({
   const initialOpportunity = initialData.opportunity;
   const isCreating = initialData.createNew ?? false;
   const [status, setStatus] = useState<OpportunityStatus>(initialOpportunity?.status ?? 'draft');
+  const [comingSoon, setComingSoon] = useState(initialOpportunity?.comingSoon ?? false);
   const [title, setTitle] = useState(initialOpportunity?.title ?? '');
   const [teaser, setTeaser] = useState(
     initialOpportunity?.teaser ?? '',
@@ -2014,6 +2024,7 @@ export function OpportunityEditor({
       slug: isCreating ? slugify(title) : initialData.slug,
       createNew: isCreating,
       status,
+      comingSoon,
       title,
       teaser,
       sectors: selectedSectors,
@@ -2287,13 +2298,28 @@ export function OpportunityEditor({
                     <label htmlFor="opportunity-status" className="fieldlabel">
                       Status
                     </label>
-                    <StatusDropdown
-                      status={status}
-                      onChange={(nextStatus) => {
-                        setStatus(nextStatus);
-                        markDirty();
-                      }}
-                    />
+                    <div className={status === 'upcoming' ? 'status-dropdown-with-coming-soon' : undefined}>
+                      <StatusDropdown
+                        status={status}
+                        onChange={(nextStatus) => {
+                          setStatus(nextStatus);
+                          if (nextStatus !== 'upcoming') {
+                            setComingSoon(false);
+                          }
+                          markDirty();
+                        }}
+                      />
+                    </div>
+                    {status === 'upcoming' ? (
+                      <CheckboxRow
+                        label="Coming Soon"
+                        checked={comingSoon}
+                        onChange={(checked) => {
+                          setComingSoon(checked);
+                          markDirty();
+                        }}
+                      />
+                    ) : null}
                     <input id="opportunity-status" type="hidden" value={status} readOnly />
                   </div>
                 </div>

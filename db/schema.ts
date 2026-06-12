@@ -70,7 +70,7 @@ export const accreditationStatus = pgEnum('accreditation_status', [
 
 export const opportunityStatus = pgEnum('opportunity_status', [
   'potential',
-  'coming_soon',
+  'upcoming',
   'draft',
   'active',
   'closed',
@@ -250,6 +250,7 @@ export const opportunities = pgTable('opportunities', {
   opportunitySectors: jsonb('opportunity_sectors').$type<string[]>().notNull().default([]),
 
   status: opportunityStatus('status').notNull().default('draft'),
+  comingSoon: boolean('coming_soon').notNull().default(false),
 
   minimumInvestmentCents: bigint('minimum_investment_cents', { mode: 'bigint' }),
   targetAllocationCents: bigint('target_allocation_cents', { mode: 'bigint' }),

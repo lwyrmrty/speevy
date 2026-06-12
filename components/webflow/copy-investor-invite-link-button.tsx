@@ -2,20 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { buildAppUrl } from '@/lib/app-url';
+
 const copiedStatusDurationMs = 2000;
 
 function getInviteLink() {
-  const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  const fallbackOrigin = window.location.origin;
-
-  if (!configuredAppUrl) {
-    return new URL('/join', fallbackOrigin).toString();
-  }
-
   try {
-    return new URL('/join', configuredAppUrl).toString();
+    return buildAppUrl('/join');
   } catch {
-    return new URL('/join', fallbackOrigin).toString();
+    return new URL('/join', window.location.origin).toString();
   }
 }
 

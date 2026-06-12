@@ -17,6 +17,7 @@ export default async function EditOpportunityPage({
       `
         id,
         status,
+        coming_soon,
         title,
         teaser,
         opportunity_sectors,
@@ -117,6 +118,7 @@ export default async function EditOpportunityPage({
     opportunity: opportunity
       ? {
           status: opportunity.status,
+          comingSoon: opportunity.coming_soon,
           title: opportunity.title,
           teaser: opportunity.teaser,
           sectors: opportunity.opportunity_sectors,

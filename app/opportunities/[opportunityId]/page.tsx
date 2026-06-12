@@ -16,6 +16,7 @@ import { SectionMiniNav } from '@/components/webflow/section-mini-nav';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
+import { formatNewsMilestonePublicationLine } from '@/lib/opportunity/news-milestones';
 import {
   opportunityAccessCookieName,
   verifyOpportunityAccessToken,
@@ -23,7 +24,7 @@ import {
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-const SHAREABLE_STATUSES = ['active', 'potential', 'coming_soon', 'closed'];
+const SHAREABLE_STATUSES = ['active', 'potential', 'upcoming', 'closed'];
 
 export const dynamic = 'force-dynamic';
 
@@ -343,6 +344,7 @@ function LinksSection({
   const description = firstString(section.data['Links-Description']);
   const linkTitles = asStringArray(section.data['Link-Title']);
   const linkUrls = asStringArray(section.data['Link-Url']);
+  const linkDates = asStringArray(section.data['Link-Date']);
   const linkImageStorageKeys = asStringArray(section.data['Link-Image-Storage-Key']);
 
   return (
@@ -354,8 +356,9 @@ function LinksSection({
           const href = linkUrls[index] || '#';
           const imageStorageKey = linkImageStorageKeys[index] ?? '';
           const domain = href === '#'
-            ? 'Link'
+            ? ''
             : new URL(href.startsWith('http') ? href : `https://${href}`).hostname.replace(/^www\./, '');
+          const publicationLine = formatNewsMilestonePublicationLine(linkDates[index] ?? '', domain);
 
           return (
             <div className="articleitem" key={`${linkTitle}-${index}`}>
@@ -370,7 +373,7 @@ function LinksSection({
                 </div>
                 <div className="articlecontent">
                   <div className="articletitle">{linkTitle}</div>
-                  <div className="articledomain">{domain}</div>
+                  {publicationLine ? <div className="articledomain">{publicationLine}</div> : null}
                 </div>
               </a>
             </div>
@@ -847,10 +850,10 @@ export default async function OpportunityPreviewPage({
   const stageLabel = opportunity.stage?.trim() || null;
   const showDealTerms = opportunity.status !== 'closed'
     && opportunity.status !== 'potential'
-    && opportunity.status !== 'coming_soon';
+    && opportunity.status !== 'upcoming';
   const useCompactHeroMetaRow = opportunity.status === 'closed'
     || opportunity.status === 'potential'
-    || opportunity.status === 'coming_soon';
+    || opportunity.status === 'upcoming';
   const hasPrimaryStats = Boolean(raiseLabel || originationFeeLabel || showDealTerms);
   const initialInterestAmountCents = existingInterest?.amount_cents == null
     ? null

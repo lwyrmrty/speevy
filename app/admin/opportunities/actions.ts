@@ -13,7 +13,7 @@ import { notifyLpsOfOpportunityStatusChange } from '@/lib/opportunity/notify-sta
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-const statusSchema = z.enum(['draft', 'potential', 'coming_soon', 'active', 'closed']);
+const statusSchema = z.enum(['draft', 'potential', 'upcoming', 'active', 'closed']);
 const opportunityAssetKindSchema = z.enum(['thumbnail', 'logo', 'section', 'document']);
 const opportunityAssetsBucket = 'opportunity-assets';
 const opportunityAssetMimeTypes = [
@@ -41,6 +41,7 @@ const saveOpportunitySchema = z.object({
   slug: z.string().trim().min(1),
   createNew: z.boolean().optional(),
   status: statusSchema,
+  comingSoon: z.boolean(),
   title: z.string().trim().min(1),
   teaser: z.string().trim().optional(),
   sectors: z.array(z.enum(INVESTOR_SECTORS)).default([]),
@@ -304,6 +305,7 @@ export async function saveOpportunityDraft(
     teaser: data.teaser || null,
     opportunity_sectors: data.sectors,
     status: data.status,
+    coming_soon: data.status === 'upcoming' ? data.comingSoon : false,
     minimum_investment_cents: moneyToCents(data.minimumCheck),
     target_allocation_cents: moneyToCents(data.targetRaise),
     origination_fee_cents: moneyToCents(data.originationFee),

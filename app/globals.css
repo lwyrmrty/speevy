@@ -307,3 +307,55 @@ body {
 .speevy-investor-filter-option.active:hover {
   color: var(--white);
 }
+
+.coming-soon-badge {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  z-index: 2;
+}
+
+/* Match nav `.innerpage-links.w--current` green — must beat webflow `.pillstat.green`
+   which loads later via WebflowStyles. */
+.thumbnailoverlay .abstl .pillstat.green,
+.coming-soon-badge .pillstat.green {
+  background-color: var(--green);
+  border-color: #f3f3f31a;
+  color: var(--lite);
+}
+
+.status-dropdown-with-coming-soon {
+  padding-bottom: 10px;
+}
+
+/* LP compact opportunity rows: prevent sector pills from being crushed */
+.cardlist-item .cardrow {
+  min-width: 0;
+}
+
+.cardlist-item .cardrow .cardlogo-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardlist-item .cardrow .cardlogo-row .cardtitle-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.cardlist-item .cardrow .statsright {
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.cardlist-item .cardrow .statsright .pillstat._5 {
+  white-space: nowrap;
+}
+
+.cardlist-item .cardrow .cardlogo-logo.nopull {
+  border: 1px solid var(--border);
+}
+
+#upcoming .rowthumb {
+  width: 190px;
+}

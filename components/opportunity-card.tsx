@@ -3,14 +3,12 @@ import { formatCents } from '@/lib/format';
 
 const statusStyles: Record<Opportunity['status'], string> = {
   potential: 'bg-slate-100 text-slate-700 ring-slate-200',
-  coming_soon: 'bg-slate-100 text-slate-700 ring-slate-200',
   upcoming: 'bg-amber-50 text-amber-800 ring-amber-200',
   active: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
   closed: 'bg-slate-200 text-slate-600 ring-slate-300',
 };
 
 const statusDisplayLabels: Partial<Record<Opportunity['status'], string>> = {
-  coming_soon: 'Coming Soon',
   closed: 'Closed',
 };
 

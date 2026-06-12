@@ -1,7 +1,7 @@
 const opportunityStatusLabels = {
   draft: 'Draft',
   potential: 'Potential',
-  coming_soon: 'Coming Soon',
+  upcoming: 'Upcoming',
   active: 'Active',
   closed: 'Closed',
 } as const;

@@ -72,9 +72,9 @@ const verifyAccessSchema = requestAccessSchema.extend({
 
 type AdminSupabaseClient = ReturnType<typeof createSupabaseAdminClient>;
 
-const SHAREABLE_STATUSES = ['active', 'potential', 'coming_soon', 'closed'];
+const SHAREABLE_STATUSES = ['active', 'potential', 'upcoming', 'closed'];
 
-const AMOUNT_REQUIRED_STATUSES = ['active', 'potential', 'coming_soon'];
+const AMOUNT_REQUIRED_STATUSES = ['active', 'potential', 'upcoming'];
 
 // Generic, non-revealing throttle response. It must not disclose whether the
 // password was correct or whether the slug/email exists — only that the caller

@@ -18,7 +18,8 @@ type OpportunityRow = {
   slug: string;
   title: string;
   teaser: string | null;
-  status: 'potential' | 'coming_soon' | 'draft' | 'active' | 'closed';
+  status: 'potential' | 'upcoming' | 'draft' | 'active' | 'closed';
+  coming_soon: boolean;
   opportunity_sectors: unknown;
   stage: string | null;
   website_url: string | null;
@@ -135,6 +136,16 @@ function sortOpportunitiesByTitle(opportunities: OpportunityCardRow[]) {
   return opportunities.slice().sort((left, right) =>
     left.title.localeCompare(right.title, undefined, { sensitivity: 'base' }),
   );
+}
+
+function sortUpcomingOpportunities(opportunities: OpportunityCardRow[]) {
+  return opportunities.slice().sort((left, right) => {
+    if (left.coming_soon !== right.coming_soon) {
+      return left.coming_soon ? -1 : 1;
+    }
+
+    return left.title.localeCompare(right.title, undefined, { sensitivity: 'base' });
+  });
 }
 
 function externalUrl(value: string | null) {
@@ -332,6 +343,13 @@ function CompactOpportunityRow({
                 alt=""
                 className="fullimage"
               />
+              {opportunity.coming_soon ? (
+                <div className="coming-soon-badge">
+                  <div className="pillstat green">
+                    <div>Coming Soon</div>
+                  </div>
+                </div>
+              ) : null}
               <div className="featuredoverlay" />
             </div>
           )}
@@ -539,6 +557,7 @@ export default async function OpportunitiesHomePage() {
       title,
       teaser,
       status,
+      coming_soon,
       opportunity_sectors,
       stage,
       website_url,
@@ -551,7 +570,7 @@ export default async function OpportunitiesHomePage() {
       thumbnail_storage_key
     `)
     // Match insider RLS (`status <> 'draft'`). Avoid `.in()` with enum values that
-    // may not exist yet (e.g. `coming_soon` before migration 0019) — PostgREST
+    // may not exist yet (e.g. `upcoming` before migration 0023) — PostgREST
     // rejects invalid enum literals and the page would silently show empty sections.
     .neq('status', 'draft')
     .is('archived_at', null)
@@ -609,15 +628,15 @@ export default async function OpportunitiesHomePage() {
   const potentialOpportunities = sortOpportunitiesByTitle(
     cards.filter((opportunity) => opportunity.status === 'potential'),
   );
-  const comingSoonOpportunities = sortOpportunitiesByTitle(
-    cards.filter((opportunity) => opportunity.status === 'coming_soon'),
+  const upcomingOpportunities = sortUpcomingOpportunities(
+    cards.filter((opportunity) => opportunity.status === 'upcoming'),
   );
   const closedOpportunities = sortOpportunitiesByTitle(
     cards.filter((opportunity) => opportunity.status === 'closed'),
   );
   const opportunityNavItems = [
     { href: '#active', label: 'Active Opportunities' },
-    { href: '#coming-soon', label: 'Coming Soon' },
+    { href: '#upcoming', label: 'Upcoming' },
     { href: '#potential', label: 'Potential Opportunities' },
     { href: '#closed', label: 'Closed Opportunities' },
   ];
@@ -687,19 +706,19 @@ export default async function OpportunitiesHomePage() {
                     : <EmptyState label="Active Opportunities" />}
                 </div>
               </div>
-              <div id="coming-soon" className="contentblock">
+              <div id="upcoming" className="contentblock">
                 <div className="tableheader">
                   <div>
-                    <div className="pagetitle">Coming Soon</div>
+                    <div className="pagetitle">Upcoming</div>
                     <div className="pagesubtitle">Opportunities launching soon. Share your interest and estimated allocation amount to reserve your spot before it becomes active.</div>
                   </div>
                 </div>
                 <div className="cardlist nomargin">
-                  {comingSoonOpportunities.length > 0
-                    ? comingSoonOpportunities.map((opportunity) => (
+                  {upcomingOpportunities.length > 0
+                    ? upcomingOpportunities.map((opportunity) => (
                       <CompactOpportunityRow key={opportunity.id} opportunity={opportunity} />
                     ))
-                    : <EmptyState label="Coming Soon Opportunities" />}
+                    : <EmptyState label="Upcoming Opportunities" />}
                 </div>
               </div>
               <div id="potential" className="contentblock">

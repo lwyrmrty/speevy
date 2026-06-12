@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { cookies } from 'next/headers';
 
+import { getAppOrigin } from '@/lib/app-url';
 import { getAccountDefaultNdaTemplate } from '@/lib/nda/account-default';
 import { verifyNdaOnboardingToken } from '@/lib/nda/tokens';
 import {
@@ -44,15 +45,6 @@ export type AccountNdaEnvelopeResult =
   | { status: 'error'; message: string };
 
 const SIGNABLE_REUSE_STATUSES = new Set(['sent', 'viewed']);
-
-function getAppOrigin(): string {
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
-  try {
-    return new URL(appUrl).origin;
-  } catch {
-    return 'https://speevy.vc';
-  }
-}
 
 type EnvelopeDocConfig = {
   documentFormat?: 'pdf' | 'docx';

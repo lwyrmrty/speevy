@@ -307,7 +307,7 @@ export function AdminActivityWorkspace({
         <div className="tableheader speevy-activity-header">
           <div className="pagetitle">Activity Feed</div>
         </div>
-        <div className="contenttable speevy-activity-table">
+        <div className="contenttable speevy-activity-table speevy-responsive-table">
           <div className="tablerow headerrow">
             <div className="tablecell first long">
               <div>Activity</div>

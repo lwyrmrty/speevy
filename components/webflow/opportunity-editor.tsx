@@ -21,6 +21,7 @@ import {
   saveOpportunityDraft,
   uploadOpportunityAsset,
 } from '@/app/admin/opportunities/actions';
+import { buildAppUrl } from '@/lib/app-url';
 import { Select } from '@/components/base/select/select';
 import { WebflowPasswordField } from '@/components/webflow/password-field';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
@@ -127,7 +128,7 @@ const defaultHeroCover = '/webflow/images/nnnoise-1.svg';
 
 const sectionTypeLabels: Record<SectionType, string> = {
   richContent: 'Rich Text',
-  links: 'Links',
+  links: 'News and Milestones',
   media: 'Media',
   documents: 'Documents',
   team: 'Team',
@@ -430,7 +431,7 @@ function SectionCardEditor({
           {section.type === 'richContent' ? (
             <RichTextDrawer initialData={section.data} />
           ) : section.type === 'links' ? (
-            <LinksDrawer
+            <NewsAndMilestonesDrawer
               initialData={section.data}
               uploadSlug={uploadSlug}
               onDirty={onDirty}
@@ -737,7 +738,7 @@ function UploadButton({
   );
 }
 
-function LinksDrawer({
+function NewsAndMilestonesDrawer({
   initialData,
   uploadSlug,
   onDirty,
@@ -783,7 +784,7 @@ function LinksDrawer({
             <div className="prompt-block">
               <div className="alignrow aligncenter">
                 <UploadButton
-                  label="Upload link thumbnail"
+                  label="Upload thumbnail"
                   name="Link-Image-Storage-Key"
                   initialStorageKey={linkImages[index] ?? ''}
                   slug={uploadSlug}
@@ -805,7 +806,7 @@ function LinksDrawer({
                 maxLength={256}
                 name="Link-Url"
                 data-name="Link URL"
-                placeholder="Content link"
+                placeholder="Article or milestone link"
                 type="url"
                 defaultValue={linkUrls[index] ?? ''}
               />
@@ -830,7 +831,7 @@ function LinksDrawer({
           setNextId((current) => current + 1);
         }}
       >
-        <div>Add New Link</div>
+        <div>Add News or Milestone</div>
       </button>
     </div>
   );
@@ -1722,18 +1723,10 @@ function CheckboxRow({ label, checked, onChange }: CheckboxRowProps) {
 }
 
 function getOpportunityLink(slug: string) {
-  const path = `/opportunities/${slug}`;
-  const configuredAppUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  const fallbackOrigin = window.location.origin;
-
-  if (!configuredAppUrl) {
-    return new URL(path, fallbackOrigin).toString();
-  }
-
   try {
-    return new URL(path, configuredAppUrl).toString();
+    return buildAppUrl(`/opportunities/${slug}`);
   } catch {
-    return new URL(path, fallbackOrigin).toString();
+    return new URL(`/opportunities/${slug}`, window.location.origin).toString();
   }
 }
 

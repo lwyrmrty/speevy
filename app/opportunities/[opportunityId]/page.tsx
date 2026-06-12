@@ -46,7 +46,7 @@ const defaultLogo = '/webflow/images/shield.svg';
 
 const sectionFallbackLabels: Record<string, string> = {
   richContent: 'Summary',
-  links: 'Links',
+  links: 'News and Milestones',
   documents: 'Documents',
   team: 'Team',
   investors: 'Investors',
@@ -883,7 +883,7 @@ export default async function OpportunityPreviewPage({
   return (
     <>
       <WebflowStyles />
-      <div id="opportunity-top" className="pagewrapper">
+      <div id="opportunity-top" className="pagewrapper speevy-opportunity-detail">
         {opportunity.watermark_enabled ? <PageWatermark email={viewerEmail} /> : null}
         <div className="pagenav">
           <div className="pagecontainer navcontainer">

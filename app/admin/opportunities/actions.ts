@@ -3,6 +3,13 @@
 import { z } from 'zod';
 
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
+import {
+  extractNewsMilestoneItemsFromSections,
+  findNewNewsMilestoneItems,
+} from '@/lib/opportunity/news-milestones';
+import { notifyInterestedLpsOfNewsMilestones } from '@/lib/opportunity/notify-news-milestones';
+import { notifyMatchingLpsOfNewOpportunity } from '@/lib/opportunity/notify-sector-match';
+import { notifyLpsOfOpportunityStatusChange } from '@/lib/opportunity/notify-status-change';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -268,9 +275,16 @@ export async function saveOpportunityDraft(
     ? { data: null }
     : await adminSupabase
         .from('opportunities')
-        .select('id, published_at')
+        .select('id, published_at, status')
         .eq('slug', slug)
         .maybeSingle();
+
+  const { data: existingSections } = existingOpportunity
+    ? await adminSupabase
+        .from('opportunity_sections')
+        .select('type, data')
+        .eq('opportunity_id', existingOpportunity.id)
+    : { data: null };
 
   // The editor seeds the field with the actual saved password, so a blank field
   // means the admin intentionally cleared it. A password-protected opportunity
@@ -386,6 +400,54 @@ export async function saveOpportunityDraft(
 
     if (sectionsError) {
       return { status: 'error', message: sectionsError.message };
+    }
+  }
+
+  const previousStatus = existingOpportunity?.status ?? 'draft';
+
+  if (previousStatus !== data.status) {
+    await notifyLpsOfOpportunityStatusChange({
+      opportunityId: opportunity.id,
+      opportunityTitle: data.title,
+      opportunitySlug: slug,
+      opportunitySectors: data.sectors,
+      previousStatus,
+      newStatus: data.status,
+      savedAt,
+    });
+  }
+
+  if (data.status !== 'draft') {
+    const isFirstPublication = !existingOpportunity?.published_at;
+
+    if (isFirstPublication) {
+      await notifyMatchingLpsOfNewOpportunity({
+        opportunityId: opportunity.id,
+        opportunityTitle: data.title,
+        opportunitySlug: slug,
+        opportunityTeaser: data.teaser || null,
+        opportunitySectors: data.sectors,
+        publishedAt: opportunityFields.published_at ?? savedAt,
+      });
+    }
+
+    const previousItems = extractNewsMilestoneItemsFromSections(
+      (existingSections ?? []).map((section) => ({
+        type: section.type,
+        data: (section.data ?? {}) as Record<string, unknown>,
+      })),
+    );
+    const nextItems = extractNewsMilestoneItemsFromSections(data.sections);
+    const newItems = findNewNewsMilestoneItems(previousItems, nextItems);
+
+    if (newItems.length > 0) {
+      await notifyInterestedLpsOfNewsMilestones({
+        opportunityId: opportunity.id,
+        opportunityTitle: data.title,
+        opportunitySlug: slug,
+        newItems,
+        savedAt,
+      });
     }
   }
 

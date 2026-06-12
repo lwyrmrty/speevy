@@ -147,7 +147,7 @@ export type CreateEnvelopeParams = {
   documentData?: Record<string, unknown>;
   // The signer. For account NDAs this is the LP; for opportunity NDAs likewise.
   recipient: { name: string; email: string };
-  // App origin allowed to embed the ceremony iframe (NEXT_PUBLIC_APP_URL origin).
+  // App origin allowed to embed the ceremony iframe (getAppOrigin() from lib/app-url).
   embeddableInOrigin: string;
   // Our mapping keys, e.g.
   //   { speevy_kind: 'account', lp_id }                          (account)

@@ -114,7 +114,7 @@ export function TagsManager({ tags }: TagsManagerProps) {
         ) : null}
       </div>
 
-      <div className="contenttable" style={{ marginTop: 24 }}>
+      <div className="contenttable speevy-responsive-table" style={{ marginTop: 24 }}>
         <div className="tablerow headerrow">
           <div className="tablecell first">
             <div>Tag</div>

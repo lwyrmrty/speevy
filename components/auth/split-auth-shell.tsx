@@ -7,6 +7,8 @@ type SplitAuthShellProps = {
   description: string;
   children: ReactNode;
   footer?: ReactNode;
+  brand?: 'speevy' | 'harpoon';
+  heroImageSrc?: string;
 };
 
 export function SplitAuthShell({
@@ -15,17 +17,30 @@ export function SplitAuthShell({
   description,
   children,
   footer,
+  brand = 'speevy',
+  heroImageSrc = '/webflow/images/ivan-bandura-5cwigXmGWTo-unsplash.webp',
 }: SplitAuthShellProps) {
   return (
     <main className="grid min-h-screen bg-background text-foreground lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
       <section className="flex min-h-screen flex-col justify-between px-6 py-6 sm:px-10 lg:px-14">
-        <Link href="/" className="flex w-fit items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-harbor text-sm font-semibold text-white shadow-sm">
-            SV
-          </span>
-          <span className="text-lg font-semibold tracking-tight text-ink">
-            Speevy
-          </span>
+        <Link href={brand === 'harpoon' ? '/login' : '/'} className="flex w-fit items-center gap-3">
+          {brand === 'harpoon' ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src="/webflow/images/Harpoon-Logo.png"
+              alt="Harpoon Ventures"
+              className="h-8 w-auto"
+            />
+          ) : (
+            <>
+              <span className="flex size-10 items-center justify-center rounded-xl bg-harbor text-sm font-semibold text-white shadow-sm">
+                SV
+              </span>
+              <span className="text-lg font-semibold tracking-tight text-ink">
+                Speevy
+              </span>
+            </>
+          )}
         </Link>
 
         <div className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center py-14">
@@ -59,7 +74,10 @@ export function SplitAuthShell({
       </section>
 
       <aside className="relative hidden bg-ink p-8 lg:block">
-        <div className="relative h-full rounded-[20px] bg-[url('/images/ocean-waves-bg.png')] bg-cover bg-center" />
+        <div
+          className="relative h-full rounded-[20px] bg-cover bg-center"
+          style={{ backgroundImage: `url('${heroImageSrc}')` }}
+        />
       </aside>
     </main>
   );

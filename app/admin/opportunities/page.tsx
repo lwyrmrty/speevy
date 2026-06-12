@@ -212,7 +212,7 @@ export default async function AdminOpportunitiesPage({
                 <div>Create New</div>
               </Link>
             </div>
-            <div className="contenttable">
+            <div className="contenttable speevy-responsive-table">
               <div className="tablerow headerrow">
                 <div className="tablecell first">
                   <div className="interestchecks-row spacing">

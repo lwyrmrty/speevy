@@ -234,8 +234,34 @@ body {
 
 .speevy-tableheader-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
+}
+
+@media screen and (max-width: 767px) {
+  .speevy-tableheader-actions {
+    width: 100%;
+  }
+
+  .speevy-investor-filter {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
+.speevy-join-form-shell {
+  margin-top: 0;
+}
+
+.speevy-join-form-shell .loginlogo,
+.speevy-join-form-shell .loginbrand,
+.speevy-join-form-shell .loginheader {
+  display: none;
+}
+
+.speevy-join-form-shell .formblock {
+  margin-top: 0;
 }
 
 .speevy-investor-filter {

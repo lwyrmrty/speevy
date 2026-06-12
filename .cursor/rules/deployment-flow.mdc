@@ -42,3 +42,12 @@ alwaysApply: true
 - Production Supabase project id used in this app is `nzjbssgsjuatzpxaqtxi`.
 - If the app uses new Supabase columns or migrations, verify production Supabase has the required schema before deploying.
 - Known required production columns include `opportunities.origination_fee_cents`, `opportunities.opportunity_sectors`, and LP preference fields on `lps`.
+
+# Custom Domains
+
+- Primary LP-facing production URL: `https://spv.harpoon.vc` (`NEXT_PUBLIC_APP_URL`).
+- Legacy alias: `https://speevy.vc` (same Vercel project; sessions are not shared across domains).
+- To add `spv.harpoon.vc`: Vercel project **Settings → Domains**, then CNAME `spv` → Vercel target on `harpoon.vc` DNS.
+- Supabase **Authentication → URL Configuration**: set Site URL to `https://spv.harpoon.vc` and allow redirect URLs for both `https://spv.harpoon.vc/**` and `https://speevy.vc/**`.
+- After DNS propagates, set production `NEXT_PUBLIC_APP_URL=https://spv.harpoon.vc` in Vercel and redeploy.
+- Update SignatureAPI webhook URL if it still points at `speevy.vc` only.

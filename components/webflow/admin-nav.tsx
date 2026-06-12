@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { AdminNavLink } from '@/components/webflow/admin-nav-links';
+import { WebflowMobileNavMenu } from '@/components/webflow/webflow-mobile-nav';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 function UserIcon() {
@@ -39,9 +40,9 @@ export async function AdminNav() {
     || 'Account';
 
   return (
-    <div className="pagenav">
+    <div className="pagenav speevy-admin-nav">
       <div className="pagecontainer navcontainer">
-        <div className="navalign">
+        <div className="navalign speevy-nav-brand-row">
           <Link href="/admin/opportunities" className="navlogo-link w-inline-block">
             <img
               src="/webflow/images/Harpoon-Logo.png"
@@ -52,24 +53,24 @@ export async function AdminNav() {
               className="navlogo"
             />
           </Link>
-          <div className="navalign">
-            <AdminNavLink href="/admin/activity">Activity</AdminNavLink>
-            <AdminNavLink href="/admin/opportunities">Opportunities</AdminNavLink>
-            <AdminNavLink href="/admin/investors">Investors</AdminNavLink>
-            <AdminNavLink href="/admin/tags">Tags</AdminNavLink>
-            <AdminNavLink href="/admin/nda-templates">NDA Templates</AdminNavLink>
-          </div>
-        </div>
-        <div className="navalign">
-          <AdminNavLink href="/admin/company">Company</AdminNavLink>
-          <div className="profileblock">
-            <a href="#" className="profilelink w-inline-block">
-              <div className="profilesquare">
-                <UserIcon />
+          <WebflowMobileNavMenu>
+            <div className="navalign speevy-nav-link-row">
+              <AdminNavLink href="/admin/activity">Activity</AdminNavLink>
+              <AdminNavLink href="/admin/opportunities">Opportunities</AdminNavLink>
+              <AdminNavLink href="/admin/investors">Investors</AdminNavLink>
+              <AdminNavLink href="/admin/tags">Tags</AdminNavLink>
+              <AdminNavLink href="/admin/nda-templates">NDA Templates</AdminNavLink>
+              <AdminNavLink href="/admin/company">Company</AdminNavLink>
+              <div className="profileblock speevy-nav-profile">
+                <a href="#" className="profilelink w-inline-block">
+                  <div className="profilesquare">
+                    <UserIcon />
+                  </div>
+                  <div className="text-block">{displayName}</div>
+                </a>
               </div>
-              <div>{displayName}</div>
-            </a>
-          </div>
+            </div>
+          </WebflowMobileNavMenu>
         </div>
       </div>
     </div>

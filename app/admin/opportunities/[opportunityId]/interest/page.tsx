@@ -223,7 +223,7 @@ export default async function OpportunityInterestPage({
                 <div className="pagesubtitle">{opportunity.title}</div>
               </div>
             </div>
-            <div className="contenttable">
+            <div className="contenttable speevy-responsive-table">
               <div className="tablerow headerrow">
                 <div className="tablecell first">
                   <div>Investor</div>

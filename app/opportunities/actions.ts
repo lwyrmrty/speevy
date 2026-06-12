@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
+import { buildAppUrl } from '@/lib/app-url';
 import {
   hasLoopsAdminInterestEnv,
   hasLoopsLoginCodeEnv,
@@ -184,16 +185,15 @@ async function sendAdminInterestNotification({
     return;
   }
 
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
   await sendAdminInterestEmail({
-    adminInterestUrl: `${appUrl}/admin/opportunities/${opportunitySlug}/interest`,
+    adminInterestUrl: buildAppUrl(`/admin/opportunities/${opportunitySlug}/interest`),
     amount: formatInterestAmount(amountCents),
     email: recipientEmail,
     indicatedAt,
     investorEmail,
     investorName,
     opportunityTitle,
-    opportunityUrl: `${appUrl}/opportunities/${opportunitySlug}`,
+    opportunityUrl: buildAppUrl(`/opportunities/${opportunitySlug}`),
     idempotencyKey: `interest-${opportunityId}-${recipientEmail}-${indicatedAt}`,
   });
 }

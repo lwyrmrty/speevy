@@ -741,7 +741,7 @@ export function AdminInvestorsTable({
         ) : null}
       </div>
 
-      <div className="contenttable tooltip-table speevy-investors-table">
+      <div className="contenttable tooltip-table speevy-investors-table speevy-responsive-table">
         <div className="tablerow headerrow">
           <div className="tablecell first">
             <div className="interestchecks-row spacing">

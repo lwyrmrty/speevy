@@ -9,6 +9,7 @@ import {
   INVESTOR_SECTORS,
   formatInvestmentRange,
 } from '@/lib/investor-request';
+import { buildAppUrl } from '@/lib/app-url';
 import {
   hasLoopsAdminLpAccessRequestEnv,
   hasLoopsLpSignupReceivedEnv,
@@ -179,7 +180,6 @@ export async function submitInvestorRequest(
   // Tokenized onboarding link so the lead can sign the account NDA right after
   // the form (they have no auth session yet). Signing is optional/informational
   // and never blocks approval; see docs/nda-gate-design.md §4B.5.
-  const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://speevy.vc').replace(/\/$/, '');
   const onboardingUrl = buildNdaOnboardingUrl(lead.id);
 
   if (hasLoopsAdminLpAccessRequestEnv()) {
@@ -191,7 +191,7 @@ export async function submitInvestorRequest(
     const results = await Promise.allSettled(
       (admins ?? []).map((admin) =>
         sendAdminLpAccessRequestEmail({
-          adminInvestorsUrl: `${appUrl}/admin/investors`,
+          adminInvestorsUrl: buildAppUrl('/admin/investors'),
           companyName: request.companyName,
           email: admin.email,
           investmentRange,

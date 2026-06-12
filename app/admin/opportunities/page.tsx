@@ -1,15 +1,18 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 
+import {
+  AdminOpportunitiesStatusFilter,
+  type OpportunityStatusFilterValue,
+} from '@/components/webflow/admin-opportunities-status-filter';
 import { AdminListPagination } from '@/components/webflow/admin-list-pagination';
+import type { OpportunityStatus } from '@/lib/opportunity/opportunity-status-labels';
 import {
   DEFAULT_PAGE_SIZE,
   paginateArray,
   parsePageParam,
 } from '@/lib/pagination';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
-
-type OpportunityStatus = 'active' | 'potential' | 'upcoming' | 'draft' | 'closed';
 
 type OpportunityRow = {
   id: string;
@@ -91,12 +94,30 @@ function pluralize(count: number, singular: string, plural = `${singular}s`) {
   return count === 1 ? singular : plural;
 }
 
+const opportunityStatuses = ['active', 'potential', 'upcoming', 'draft', 'closed'] as const;
+
+function parseStatusFilter(value: string | string[] | undefined): OpportunityStatusFilterValue {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) {
+    return 'all';
+  }
+
+  for (const status of opportunityStatuses) {
+    if (status === raw) {
+      return status;
+    }
+  }
+
+  return 'all';
+}
+
 export default async function AdminOpportunitiesPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string | string[] }>;
+  searchParams?: Promise<{ page?: string | string[]; status?: string | string[] }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
+  const statusFilter = parseStatusFilter(resolvedSearchParams.status);
   const page = parsePageParam(resolvedSearchParams.page);
   const supabase = createSupabaseAdminClient();
   const { data: opportunitiesData } = await supabase
@@ -115,6 +136,7 @@ export default async function AdminOpportunitiesPage({
 
   const opportunities = ((opportunitiesData ?? []) as OpportunityRow[])
     .slice()
+    .filter((opportunity) => statusFilter === 'all' || opportunity.status === statusFilter)
     .sort((left, right) => statusSortOrder[left.status] - statusSortOrder[right.status]);
   const opportunityIds = opportunities.map((opportunity) => opportunity.id);
 
@@ -205,12 +227,17 @@ export default async function AdminOpportunitiesPage({
           <div>
             <div className="tableheader">
               <div className="pagetitle">Manage Opportunities</div>
-              <Link
-                href="/admin/opportunities/new"
-                className="button short w-inline-block"
-              >
-                <div>Create New</div>
-              </Link>
+              <div className="speevy-tableheader-actions">
+                <Suspense fallback={null}>
+                  <AdminOpportunitiesStatusFilter value={statusFilter} />
+                </Suspense>
+                <Link
+                  href="/admin/opportunities/new"
+                  className="button short w-inline-block"
+                >
+                  <div>Create New</div>
+                </Link>
+              </div>
             </div>
             <div className="contenttable speevy-responsive-table">
               <div className="tablerow headerrow">

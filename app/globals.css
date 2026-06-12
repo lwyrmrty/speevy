@@ -1,4 +1,14 @@
 @import "../styles/globals.css";
+@import "tailwindcss";
+@import "../styles/theme.css";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@plugin "tailwindcss-animate";
+@plugin "tailwindcss-react-aria-components";
+
+@custom-variant dark (&:is(.dark *));
+@custom-variant dark-mode (&:where(.dark-mode, .dark-mode *));
 
 @theme {
   --color-background: var(--color-bg-primary);
@@ -10,31 +20,6 @@
   --color-mist: #eef3f8;
   --shadow-glow: 0 24px 80px rgba(18, 35, 63, 0.22);
 }
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  min-height: 100vh;
-  margin: 0;
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
-}
-
-::selection {
-  background: color-mix(in srgb, var(--color-brand-200) 60%, transparent);
-}
-@import "tailwindcss";
-@import "../styles/theme.css";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
-
-@plugin "tailwindcss-animate";
-@plugin "tailwindcss-react-aria-components";
-
-@custom-variant dark (&:is(.dark *));
-@custom-variant dark-mode (&:where(.dark-mode, .dark-mode *));
 
 @theme inline {
   --color-background: var(--background);

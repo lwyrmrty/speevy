@@ -446,6 +446,10 @@ strong {
   line-height: 1.1em;
 }
 
+#active .pagecard .cardtitle {
+  font-size: 24px;
+}
+
 .cardtitle.sm {
   font-size: 18px;
 }
@@ -4234,8 +4238,13 @@ strong {
   padding-top: 3px;
 }
 
+#potential .cardlist-item .cardrow .cardlogo-row .cardtitle,
+#upcoming .cardlist-item .cardrow .cardlogo-row .cardtitle,
 #closed .cardlist-item .cardrow .cardlogo-row .cardtitle {
   font-size: calc(19.11px * 0.85 * 1.1);
+}
+
+#closed .cardlist-item .cardrow .cardlogo-row .cardtitle {
   margin: 0;
   margin-top: 4px;
 }

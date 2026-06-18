@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 
 import { InvestorRequestForm } from '@/components/auth/investor-request-form';
-import { SplitAuthShell } from '@/components/auth/split-auth-shell';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
 
 export const metadata: Metadata = {
@@ -12,16 +11,41 @@ export default function JoinPage() {
   return (
     <>
       <WebflowStyles />
-      <SplitAuthShell
-        brand="harpoon"
-        eyebrow="Investor access"
-        title="Request Harpoon access"
-        description="Tell us a bit about yourself and the sectors you care about. Harpoon reviews every request before inviting LPs into Speevy."
-      >
-        <div className="speevy-join-form-shell">
-          <InvestorRequestForm token="public" />
+      <div className="adminpage-wrapper nopadding">
+        <div className="admin-wrapper tall">
+          <div className="logincontent">
+            <div className="loginblock">
+              <div className="loginform-wrapper">
+                <a href="/join" className="w-inline-block">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/webflow/images/Harpoon-Logo.png"
+                    loading="lazy"
+                    sizes="(max-width: 931px) 100vw, 931px"
+                    srcSet="/webflow/images/Harpoon-Logo-p-500.png 500w, /webflow/images/Harpoon-Logo-p-800.png 800w, /webflow/images/Harpoon-Logo.png 931w"
+                    alt="Harpoon Ventures"
+                    className="loginlogo"
+                  />
+                </a>
+                <div className="formblock w-form">
+                  <InvestorRequestForm token="public" />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="loginimage-side">
+            <div className="loginimage">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/webflow/images/ivan-bandura-5cwigXmGWTo-unsplash.png"
+                loading="lazy"
+                alt=""
+                className="full-image"
+              />
+            </div>
+          </div>
         </div>
-      </SplitAuthShell>
+      </div>
     </>
   );
 }

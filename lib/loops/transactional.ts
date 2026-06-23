@@ -68,6 +68,11 @@ type SendLpOpportunityUpdatedEmailParams = {
   updateCount: string;
   updateHeadline: string;
   updateSummary: string;
+  opportunitySectors?: string;
+  opportunityRaise?: string;
+  opportunityStage?: string;
+  opportunityMinimum?: string;
+  opportunityTeaser?: string;
   idempotencyKey: string;
 };
 
@@ -440,6 +445,11 @@ export async function sendLpOpportunityUpdatedEmail({
   updateCount,
   updateHeadline,
   updateSummary,
+  opportunitySectors = '',
+  opportunityRaise = '',
+  opportunityStage = '',
+  opportunityMinimum = '',
+  opportunityTeaser = '',
   idempotencyKey,
 }: SendLpOpportunityUpdatedEmailParams) {
   const apiKey = getLoopsApiKey();
@@ -467,6 +477,11 @@ export async function sendLpOpportunityUpdatedEmail({
         updateCount,
         updateHeadline,
         updateSummary,
+        opportunitySectors,
+        opportunityRaise,
+        opportunityStage,
+        opportunityMinimum,
+        opportunityTeaser,
       },
     }),
   });

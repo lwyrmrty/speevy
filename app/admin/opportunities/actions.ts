@@ -3,11 +3,7 @@
 import { z } from 'zod';
 
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
-import {
-  extractNewsMilestoneItemsFromSections,
-  findNewNewsMilestoneItems,
-} from '@/lib/opportunity/news-milestones';
-import { notifyInterestedLpsOfNewsMilestones } from '@/lib/opportunity/notify-news-milestones';
+import { notifyFollowersOfOpportunityUpdate } from '@/lib/opportunity/notify-followers-update';
 import { notifyMatchingLpsOfNewOpportunity } from '@/lib/opportunity/notify-sector-match';
 import { notifyLpsOfOpportunityStatusChange } from '@/lib/opportunity/notify-status-change';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
@@ -280,13 +276,6 @@ export async function saveOpportunityDraft(
         .eq('slug', slug)
         .maybeSingle();
 
-  const { data: existingSections } = existingOpportunity
-    ? await adminSupabase
-        .from('opportunity_sections')
-        .select('type, data')
-        .eq('opportunity_id', existingOpportunity.id)
-    : { data: null };
-
   // The editor seeds the field with the actual saved password, so a blank field
   // means the admin intentionally cleared it. A password-protected opportunity
   // must always have a gate password.
@@ -432,26 +421,125 @@ export async function saveOpportunityDraft(
         publishedAt: opportunityFields.published_at ?? savedAt,
       });
     }
-
-    const previousItems = extractNewsMilestoneItemsFromSections(
-      (existingSections ?? []).map((section) => ({
-        type: section.type,
-        data: (section.data ?? {}) as Record<string, unknown>,
-      })),
-    );
-    const nextItems = extractNewsMilestoneItemsFromSections(data.sections);
-    const newItems = findNewNewsMilestoneItems(previousItems, nextItems);
-
-    if (newItems.length > 0) {
-      await notifyInterestedLpsOfNewsMilestones({
-        opportunityId: opportunity.id,
-        opportunityTitle: data.title,
-        opportunitySlug: slug,
-        newItems,
-        savedAt,
-      });
-    }
   }
 
   return { status: 'success', opportunityId: opportunity.id, slug, savedAt };
+}
+
+const sendFollowerUpdateSchema = z.object({
+  opportunityId: z.string().uuid(),
+  updateNote: z.string().trim().min(1, 'Add an update note before sending.').max(2000),
+});
+
+export type SendOpportunityFollowerUpdateResult =
+  | { status: 'success'; recipientCount: number; emailFailures: number }
+  | { status: 'error'; message: string };
+
+export async function sendOpportunityFollowerUpdate(
+  payload: z.infer<typeof sendFollowerUpdateSchema>,
+): Promise<SendOpportunityFollowerUpdateResult> {
+  const parsed = sendFollowerUpdateSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return {
+      status: 'error',
+      message: parsed.error.issues[0]?.message ?? 'Invalid update note.',
+    };
+  }
+
+  const { profile, error: authError } = await getAdminProfile();
+
+  if (authError || !profile) {
+    return { status: 'error', message: authError ?? 'Only admins can send follower updates.' };
+  }
+
+  const adminSupabase = createSupabaseAdminClient();
+  const { data: opportunity } = await adminSupabase
+    .from('opportunities')
+    .select('id, slug, title, teaser, status, opportunity_sectors, target_allocation_cents, stage, minimum_investment_cents')
+    .eq('id', parsed.data.opportunityId)
+    .is('archived_at', null)
+    .maybeSingle();
+
+  if (!opportunity || opportunity.status === 'draft') {
+    return { status: 'error', message: 'This opportunity is not available to notify yet.' };
+  }
+
+  const sentAt = new Date().toISOString();
+  const { data: broadcast, error: broadcastError } = await adminSupabase
+    .from('opportunity_update_broadcasts')
+    .insert({
+      opportunity_id: opportunity.id,
+      sent_by_profile_id: profile.id,
+      update_note: parsed.data.updateNote,
+      recipient_count: 0,
+      sent_at: sentAt,
+    })
+    .select('id')
+    .single();
+
+  if (broadcastError || !broadcast) {
+    return { status: 'error', message: 'Could not record this follower update.' };
+  }
+
+  let recipientCount = 0;
+  let emailFailures = 0;
+  let failureMessage: string | undefined;
+
+  try {
+    const result = await notifyFollowersOfOpportunityUpdate({
+      broadcastId: broadcast.id,
+      opportunityId: opportunity.id,
+      opportunitySlug: opportunity.slug,
+      opportunityTitle: opportunity.title,
+      opportunityTeaser: opportunity.teaser,
+      opportunitySectors: opportunity.opportunity_sectors,
+      targetAllocationCents: opportunity.target_allocation_cents,
+      stage: opportunity.stage,
+      minimumInvestmentCents: opportunity.minimum_investment_cents,
+      updateNote: parsed.data.updateNote,
+      sentAt,
+    });
+    recipientCount = result.recipientCount;
+    emailFailures = result.emailFailures;
+    failureMessage = result.failureMessage;
+  } catch (error) {
+    return {
+      status: 'error',
+      message: error instanceof Error ? error.message : 'Could not send follower update emails.',
+    };
+  }
+
+  if (recipientCount === 0) {
+    return { status: 'error', message: 'No followers to notify yet.' };
+  }
+
+  await adminSupabase
+    .from('opportunity_update_broadcasts')
+    .update({ recipient_count: recipientCount })
+    .eq('id', broadcast.id);
+
+  await adminSupabase.from('audit_log').insert({
+    actor_profile_id: profile.id,
+    actor_role: 'admin',
+    action: 'opportunity.update_sent',
+    entity_type: 'opportunity',
+    entity_id: opportunity.id,
+    metadata: {
+      broadcast_id: broadcast.id,
+      recipient_count: recipientCount,
+      email_failures: emailFailures,
+      update_note_length: parsed.data.updateNote.length,
+    },
+  });
+
+  if (emailFailures > 0) {
+    const failureDetail = failureMessage ? ` ${failureMessage}` : '';
+    return {
+      status: 'error',
+      message: `Update sent to ${recipientCount - emailFailures} of ${recipientCount} followers. Some emails failed.${failureDetail}`,
+    };
+  }
+
+  return { status: 'success', recipientCount, emailFailures };
 }

@@ -6,6 +6,10 @@ import { z } from 'zod';
 
 import { buildAppUrl } from '@/lib/app-url';
 import {
+  logDevLoginCode,
+  shouldUseDevLoginCodeFallback,
+} from '@/lib/dev/login-code-fallback';
+import {
   hasLoopsAdminInterestEnv,
   hasLoopsLoginCodeEnv,
   sendAdminInterestEmail,
@@ -40,6 +44,11 @@ import {
   VERIFICATION_TTL_MS,
 } from '@/lib/opportunity-verification';
 import {
+  ensureOpportunityFollow,
+  isActiveOpportunityFollow,
+  setOpportunityFollow,
+} from '@/lib/opportunity/follows';
+import {
   centsToNumber,
   getOpportunityInterestTotals,
 } from '@/lib/opportunity-interest-summary';
@@ -52,6 +61,11 @@ const saveInterestSchema = z.object({
   opportunityId: z.string().uuid(),
   amountCents: z.number().int().positive().nullable(),
   interested: z.boolean(),
+});
+
+const toggleFollowSchema = z.object({
+  opportunityId: z.string().uuid(),
+  following: z.boolean(),
 });
 
 // Gate submission: First/Last name + email + the admin-chosen opportunity
@@ -156,7 +170,11 @@ type AdminInterestNotification = {
 };
 
 export type SaveOpportunityInterestResult =
-  | { status: 'success' }
+  | { status: 'success'; following: boolean }
+  | { status: 'error'; message: string };
+
+export type ToggleOpportunityFollowResult =
+  | { status: 'success'; following: boolean }
   | { status: 'error'; message: string };
 
 function formatInterestAmount(amountCents: number | null) {
@@ -311,10 +329,17 @@ async function persistInterest(
     targetAllocationCents: targetAllocationCents > 0 ? targetAllocationCents : null,
   });
 
+  await ensureOpportunityFollow(supabase, {
+    actorProfileId,
+    lpId: lp.id,
+    opportunityId: opportunity.id,
+    source: 'interest',
+  });
+
   revalidatePath('/opportunities');
   revalidatePath(`/opportunities/${opportunity.slug}`);
 
-  return { status: 'success' };
+  return { status: 'success', following: true };
 }
 
 async function persistWithdrawal(
@@ -375,10 +400,18 @@ async function persistWithdrawal(
   revalidatePath('/opportunities');
   revalidatePath(`/opportunities/${opportunity.slug}`);
 
-  return { status: 'success' };
-}
+  const { data: followRow } = await supabase
+    .from('opportunity_follows')
+    .select('unfollowed_at')
+    .eq('opportunity_id', opportunity.id)
+    .eq('lp_id', lp.id)
+    .maybeSingle();
 
-// Outsider path: a visitor with a valid (signed, opportunity-scoped) access
+  return {
+    status: 'success',
+    following: isActiveOpportunityFollow(followRow),
+  };
+}
 // cookie submits interest on a password-protected opportunity. Their identity
 // is the email they entered at the gate, stored on an "outsider" LP row.
 async function saveGuestOpportunityInterest(
@@ -505,6 +538,63 @@ export async function saveOpportunityInterest(
     actorProfileId: user.id,
     source: 'lp',
   });
+}
+
+export async function toggleOpportunityFollow(
+  payload: z.infer<typeof toggleFollowSchema>,
+): Promise<ToggleOpportunityFollowResult> {
+  const parsed = toggleFollowSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    return { status: 'error', message: 'Unable to update follow preference.' };
+  }
+
+  const serverSupabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+  } = await serverSupabase.auth.getUser();
+
+  if (!user) {
+    return { status: 'error', message: 'Sign in to follow opportunities.' };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: lp } = await supabase
+    .from('lps')
+    .select('id, status')
+    .eq('profile_id', user.id)
+    .maybeSingle();
+
+  if (lp?.status !== 'approved') {
+    return { status: 'error', message: 'Only approved LPs can follow opportunities.' };
+  }
+
+  const { data: opportunity } = await supabase
+    .from('opportunities')
+    .select('id, slug, status')
+    .eq('id', parsed.data.opportunityId)
+    .is('archived_at', null)
+    .maybeSingle();
+
+  if (!opportunity || opportunity.status === 'draft') {
+    return { status: 'error', message: 'This opportunity is not available to follow.' };
+  }
+
+  const { error } = await setOpportunityFollow(supabase, {
+    actorProfileId: user.id,
+    following: parsed.data.following,
+    lpId: lp.id,
+    opportunityId: opportunity.id,
+  });
+
+  if (error) {
+    return { status: 'error', message: error };
+  }
+
+  revalidatePath('/opportunities');
+  revalidatePath(`/opportunities/${opportunity.slug}`);
+
+  return { status: 'success', following: parsed.data.following };
 }
 
 type UnlockableOpportunity = {
@@ -679,7 +769,7 @@ export async function requestOpportunityAccess(
     return grantOpportunityAccess(supabase, opportunity, parsed.data.email, fullName);
   }
 
-  if (!hasLoopsLoginCodeEnv()) {
+  if (!hasLoopsLoginCodeEnv() && !shouldUseDevLoginCodeFallback()) {
     return {
       status: 'error',
       message: 'Email verification is temporarily unavailable. Please try again later.',
@@ -724,6 +814,11 @@ export async function requestOpportunityAccess(
 
   if (upsertError) {
     return { status: 'error', message: 'Could not start email verification. Please try again.' };
+  }
+
+  if (shouldUseDevLoginCodeFallback()) {
+    logDevLoginCode(parsed.data.email, code);
+    return { status: 'code_sent' };
   }
 
   try {

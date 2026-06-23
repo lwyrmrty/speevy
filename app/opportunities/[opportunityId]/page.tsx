@@ -8,7 +8,11 @@ import {
 } from '@/app/account/nda/actions';
 import { GlanceChatWidget } from '@/components/glance-chat-widget';
 import { DocumentViewerDrawer } from '@/components/webflow/document-viewer-drawer';
-import { OpportunityInterestCard } from '@/components/webflow/opportunity-interest-card';
+import {
+  OpportunityEngagementProvider,
+  OpportunityFollowSection,
+  OpportunityReserveInterestSection,
+} from '@/components/webflow/opportunity-sidebar-engagement';
 import { OpportunityPasswordGate } from '@/components/webflow/opportunity-password-gate';
 import { OutsiderNdaGate } from '@/components/webflow/outsider-account-nda';
 import { PageWatermark } from '@/components/webflow/page-watermark';
@@ -16,6 +20,7 @@ import { SectionMiniNav } from '@/components/webflow/section-mini-nav';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
+import { isActiveOpportunityFollow } from '@/lib/opportunity/follows';
 import { formatNewsMilestonePublicationLine } from '@/lib/opportunity/news-milestones';
 import {
   opportunityAccessCookieName,
@@ -125,16 +130,18 @@ function compactRaiseAmount(value: number | string | null) {
     return null;
   }
 
+  let label: string;
+
   if (amount >= 1_000_000) {
     const millions = amount / 1_000_000;
-    return `$${Number.isInteger(millions) ? millions : millions.toFixed(1)} Million`;
+    label = `$${Number.isInteger(millions) ? millions : millions.toFixed(1)} Million`;
+  } else if (amount >= 1_000) {
+    label = `$${Math.round(amount / 1_000)}k`;
+  } else {
+    label = `$${amount.toLocaleString('en-US')}`;
   }
 
-  if (amount >= 1_000) {
-    return `$${Math.round(amount / 1_000)}k`;
-  }
-
-  return `$${amount.toLocaleString('en-US')}`;
+  return `${label} Available`;
 }
 
 function compactMinAmount(value: number | string | null) {
@@ -807,6 +814,19 @@ export default async function OpportunityPreviewPage({
     existingInterest = data;
   }
 
+  let existingFollow = false;
+
+  if (interestLpId && !isGuest) {
+    const { data: followRow } = await supabase
+      .from('opportunity_follows')
+      .select('unfollowed_at')
+      .eq('opportunity_id', opportunity.id)
+      .eq('lp_id', interestLpId)
+      .maybeSingle();
+
+    existingFollow = isActiveOpportunityFollow(followRow);
+  }
+
   const { data: sections } = await contentClient
     .from('opportunity_sections')
     .select('type, position, data')
@@ -1059,15 +1079,28 @@ export default async function OpportunityPreviewPage({
               ))}
             </div>
             <div className="pageside">
-              <div className="pagecard sidecard">
-                <div className="cardblock">
-                  <div className="alignrow _10">
+              <OpportunityEngagementProvider
+                initialAmountCents={initialInterestAmountCents}
+                initialFollowing={existingFollow}
+                initialInterested={Boolean(existingInterest)}
+                minimumInvestmentCents={centsToNumber(opportunity.minimum_investment_cents)}
+                opportunityId={opportunity.id}
+                variant={opportunity.status === 'closed' ? 'closed' : 'standard'}
+              >
+                <div className="pagecard sidecard">
+                  <div className="cardblock">
+                    <div className="alignrow _10">
                     <div className="cardlogo sm">
                       <img src={logoUrl ?? defaultLogo} loading="lazy" alt="" className="fullimage" />
                     </div>
                     <div>
                       <div className="sideheading">{opportunity.title}</div>
                       <div className="sidesubheading">{opportunity.teaser}</div>
+                      {normalizeSectors(opportunity.opportunity_sectors).length > 0 ? (
+                        <div className="sidecard-sector-row">
+                          <OpportunitySectorPills sectors={opportunity.opportunity_sectors} />
+                        </div>
+                      ) : null}
                       {socialLinks.length > 0 ? (
                         <div className="alignrow sidecard-social-row">
                           {socialLinks.map((link) => (
@@ -1090,7 +1123,6 @@ export default async function OpportunityPreviewPage({
                   <div className="div-block-2">
                     {useCompactHeroMetaRow ? (
                       <div className="alignrow wrap">
-                        <OpportunitySectorPills sectors={opportunity.opportunity_sectors} />
                         {stageLabel ? (
                           <div className="pillstat">
                             <div><span className="dimish">Stage:</span> {stageLabel}</div>
@@ -1104,8 +1136,7 @@ export default async function OpportunityPreviewPage({
                       </div>
                     ) : (
                       <>
-                        <OpportunitySectorPills sectors={opportunity.opportunity_sectors} />
-                        {hasPrimaryStats ? (
+                        {Boolean(raiseLabel || showDealTerms) ? (
                           <div className="alignrow wrap">
                             {raiseLabel ? (
                               <div className="pillstat">
@@ -1113,18 +1144,8 @@ export default async function OpportunityPreviewPage({
                               </div>
                             ) : null}
                             {showDealTerms ? (
-                              <>
-                                <div className="pillstat">
-                                  <div>{carry ? `${carry} Carry` : '0% Carry'}</div>
-                                </div>
-                                <div className="pillstat">
-                                  <div>{managementFee ? `${managementFee} Fee` : 'No Fee'}</div>
-                                </div>
-                              </>
-                            ) : null}
-                            {originationFeeLabel ? (
                               <div className="pillstat">
-                                <div><span className="dimish">Origination:</span> {originationFeeLabel}</div>
+                                <div>{carry ? `${carry} Carry` : '0% Carry'}</div>
                               </div>
                             ) : null}
                           </div>
@@ -1146,29 +1167,11 @@ export default async function OpportunityPreviewPage({
                       </>
                     )}
                   </div>
+                  <OpportunityReserveInterestSection />
                 </div>
-                <div className="cardblock reserve-interest-cardblock">
-                  <div>
-                    <div className="sideheading">
-                      {opportunity.status === 'closed' ? 'Interested?' : 'Reserve Interest'}
-                    </div>
-                    <div className="sidesubheading">
-                      {opportunity.status === 'closed'
-                        ? 'Let us know if you would like updates if this opportunity becomes available again.'
-                        : 'Update the opportunity with your interest and estimated check'}
-                    </div>
-                  </div>
-                  <div className="formblock w-form">
-                    <OpportunityInterestCard
-                      initialAmountCents={initialInterestAmountCents}
-                      initialInterested={Boolean(existingInterest)}
-                      minimumInvestmentCents={centsToNumber(opportunity.minimum_investment_cents)}
-                      opportunityId={opportunity.id}
-                      variant={opportunity.status === 'closed' ? 'closed' : 'standard'}
-                    />
-                  </div>
-                </div>
+                {!isGuest && isApprovedLp ? <OpportunityFollowSection /> : null}
               </div>
+              </OpportunityEngagementProvider>
             </div>
           </div>
         </div>

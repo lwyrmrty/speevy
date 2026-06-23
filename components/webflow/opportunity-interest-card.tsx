@@ -52,6 +52,7 @@ export function OpportunityInterestCard({
   initialInterested = false,
   isGuest = false,
   minimumInvestmentCents,
+  onInterestSaved,
   opportunityId,
   variant = 'standard',
 }: {
@@ -59,6 +60,7 @@ export function OpportunityInterestCard({
   initialInterested?: boolean;
   isGuest?: boolean;
   minimumInvestmentCents: number;
+  onInterestSaved?: (result: { following: boolean }) => void;
   opportunityId: string;
   variant?: 'standard' | 'closed';
 }) {
@@ -89,6 +91,7 @@ export function OpportunityInterestCard({
     setSaving(false);
 
     if (result.status === 'success') {
+      onInterestSaved?.({ following: result.following });
       showToast({ status: 'success', text: 'Interest saved.' });
       return;
     }
@@ -179,11 +182,13 @@ export function OpportunityInterestCard({
             if (result.status === 'success') {
               if (interested) {
                 setHasStoredInterest(true);
+                onInterestSaved?.({ following: result.following });
                 showToast({ status: 'success', text: 'Interest saved.' });
                 return;
               }
 
               setHasStoredInterest(false);
+              onInterestSaved?.({ following: result.following });
               showToast({ status: 'success', text: 'Interest withdrawn.' });
               return;
             }

@@ -115,6 +115,9 @@ export const auditAction = pgEnum('audit_action', [
   'interest.indicated',
   'interest.committed',
   'interest.withdrawn',
+  'opportunity.followed',
+  'opportunity.unfollowed',
+  'opportunity.update_sent',
   'nda.sent',
   'nda.signed',
   'nda_template.created',
@@ -517,6 +520,36 @@ export const interests = pgTable('interests', {
 }));
 
 // ---------------------------------------------------------------------------
+// opportunity_follows — LP opt-in to deal update notifications.
+// Follow is the source of truth for ongoing opportunity notifications.
+// ---------------------------------------------------------------------------
+export const opportunityFollows = pgTable('opportunity_follows', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  opportunityId: uuid('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
+  lpId: uuid('lp_id').notNull().references(() => lps.id, { onDelete: 'cascade' }),
+  followedAt: timestamp('followed_at', { withTimezone: true }).notNull().defaultNow(),
+  unfollowedAt: timestamp('unfollowed_at', { withTimezone: true }),
+}, (t) => ({
+  uniqOpportunityLp: uniqueIndex('opportunity_follows_opp_lp_idx').on(t.opportunityId, t.lpId),
+  opportunityIdx: index('opportunity_follows_opportunity_idx').on(t.opportunityId),
+  lpIdx: index('opportunity_follows_lp_idx').on(t.lpId),
+}));
+
+// ---------------------------------------------------------------------------
+// opportunity_update_broadcasts — admin-sent follower update history.
+// ---------------------------------------------------------------------------
+export const opportunityUpdateBroadcasts = pgTable('opportunity_update_broadcasts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  opportunityId: uuid('opportunity_id').notNull().references(() => opportunities.id, { onDelete: 'cascade' }),
+  sentByProfileId: uuid('sent_by_profile_id').notNull().references(() => profiles.id),
+  updateNote: text('update_note').notNull(),
+  recipientCount: integer('recipient_count').notNull(),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  opportunityIdx: index('opportunity_update_broadcasts_opportunity_idx').on(t.opportunityId),
+}));
+
+// ---------------------------------------------------------------------------
 // audit_log — append-only.
 // All writes via service role. No update/delete ever.
 // ---------------------------------------------------------------------------
@@ -551,6 +584,7 @@ export const lpsRelations = relations(lps, ({ one, many }) => ({
   ndas: many(opportunityNdas),
   accountNda: one(accountNdas, { fields: [lps.id], references: [accountNdas.lpId] }),
   tags: many(lpTags),
+  follows: many(opportunityFollows),
 }));
 
 export const accountNdasRelations = relations(accountNdas, ({ one }) => ({
@@ -576,6 +610,8 @@ export const opportunitiesRelations = relations(opportunities, ({ one, many }) =
   access: many(opportunityAccess),
   ndas: many(opportunityNdas),
   interests: many(interests),
+  follows: many(opportunityFollows),
+  updateBroadcasts: many(opportunityUpdateBroadcasts),
 }));
 
 export const ndaTemplatesRelations = relations(ndaTemplates, ({ one, many }) => ({

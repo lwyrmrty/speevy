@@ -114,6 +114,16 @@ export default async function EditOpportunityPage({
 
   const initialData: OpportunityEditorInitialData = {
     slug: opportunityId,
+    opportunityId: opportunity?.id ?? null,
+    followerCount: opportunity?.id
+      ? (
+          await supabase
+            .from('opportunity_follows')
+            .select('id', { count: 'exact', head: true })
+            .eq('opportunity_id', opportunity.id)
+            .is('unfollowed_at', null)
+        ).count ?? 0
+      : 0,
     ndaTemplates: ndaTemplatesData ?? [],
     opportunity: opportunity
       ? {

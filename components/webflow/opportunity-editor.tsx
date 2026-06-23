@@ -21,6 +21,7 @@ import {
   saveOpportunityDraft,
   uploadOpportunityAsset,
 } from '@/app/admin/opportunities/actions';
+import { OpportunityFollowerNotifyCard } from '@/components/webflow/opportunity-follower-notify-card';
 import { buildAppUrl } from '@/lib/app-url';
 import { Select } from '@/components/base/select/select';
 import { WebflowPasswordField } from '@/components/webflow/password-field';
@@ -45,6 +46,8 @@ export type NdaTemplateOption = {
 export type OpportunityEditorInitialData = {
   slug: string;
   createNew?: boolean;
+  opportunityId?: string | null;
+  followerCount?: number;
   // Active (non-archived) NDA catalog rows for the "Require NDA" document picker.
   ndaTemplates?: NdaTemplateOption[];
   opportunity?: {
@@ -2624,6 +2627,13 @@ export function OpportunityEditor({
                   </div>
                 </div>
               </form>
+              {!isCreating && initialData.opportunityId ? (
+                <OpportunityFollowerNotifyCard
+                  followerCount={initialData.followerCount ?? 0}
+                  opportunityId={initialData.opportunityId}
+                  opportunityTitle={title}
+                />
+              ) : null}
               <div className="w-form-done">
                 <div>Thank you! Your submission has been received!</div>
               </div>

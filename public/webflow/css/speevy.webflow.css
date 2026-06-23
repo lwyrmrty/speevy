@@ -1003,7 +1003,34 @@ strong {
   background-color: #0b756b0d;
   border-radius: 10px;
   margin: 10px;
-  padding: 18px;
+  padding: 13px;
+}
+
+.cardblock > .reserve-interest-cardblock {
+  flex: 0 auto;
+  margin: 10px -8px -8px;
+}
+
+.reserve-interest-cardblock > div:first-child {
+  padding-left: 3px;
+}
+
+.follow-opportunity-cardblock {
+  border-top: 1.5px solid var(--lite);
+}
+
+.follow-opportunity-cardblock .interestedcheck {
+  align-items: center;
+  height: auto;
+  min-height: 50px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.follow-opportunity-cardblock .interestedcheck > div:first-child {
+  flex: 1;
+  text-align: left;
+  padding-right: 24px;
 }
 
 .div-block {
@@ -1392,6 +1419,14 @@ strong {
 
 .sidecard-social-row {
   margin-top: 10px;
+}
+
+.sidecard-sector-row {
+  margin-top: 0;
+}
+
+.sidecard-sector-row > .alignrow.wrap {
+  margin-top: 5px;
 }
 
 .contenttable {

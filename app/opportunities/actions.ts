@@ -6,10 +6,6 @@ import { z } from 'zod';
 
 import { buildAppUrl } from '@/lib/app-url';
 import {
-  logDevLoginCode,
-  shouldUseDevLoginCodeFallback,
-} from '@/lib/dev/login-code-fallback';
-import {
   hasLoopsAdminInterestEnv,
   hasLoopsLoginCodeEnv,
   sendAdminInterestEmail,
@@ -769,7 +765,7 @@ export async function requestOpportunityAccess(
     return grantOpportunityAccess(supabase, opportunity, parsed.data.email, fullName);
   }
 
-  if (!hasLoopsLoginCodeEnv() && !shouldUseDevLoginCodeFallback()) {
+  if (!hasLoopsLoginCodeEnv()) {
     return {
       status: 'error',
       message: 'Email verification is temporarily unavailable. Please try again later.',
@@ -814,11 +810,6 @@ export async function requestOpportunityAccess(
 
   if (upsertError) {
     return { status: 'error', message: 'Could not start email verification. Please try again.' };
-  }
-
-  if (shouldUseDevLoginCodeFallback()) {
-    logDevLoginCode(parsed.data.email, code);
-    return { status: 'code_sent' };
   }
 
   try {

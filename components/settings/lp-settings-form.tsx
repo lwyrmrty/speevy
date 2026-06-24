@@ -10,10 +10,13 @@ import {
   type InvestorSector,
 } from '@/lib/investor-request';
 import {
+  updateLpNotificationPreferences,
   updateLpSettings,
+  type LpNotificationPreferencesActionState,
   type LpSettingsActionState,
 } from '@/app/settings/actions';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
+import type { LpNotificationPreference } from '@/lib/lp/notification-preferences';
 
 type LpSettingsFormProps = {
   email: string;
@@ -171,5 +174,150 @@ export function LpSettingsForm({
         </button>
       </div>
     </form>
+  );
+}
+
+function NotificationCheckIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width="64"
+      height="64"
+      className="checkicon"
+    >
+      <g fill="none" fillRule="evenodd">
+        <path
+          fill="currentColor"
+          d="M21.546 5.111a1.5 1.5 0 0 1 0 2.121L10.303 18.475a1.6 1.6 0 0 1-2.263 0L2.454 12.89a1.5 1.5 0 1 1 2.121-2.121l4.596 4.596L19.424 5.111a1.5 1.5 0 0 1 2.122 0Z"
+        />
+      </g>
+    </svg>
+  );
+}
+
+type NotificationPreference = LpNotificationPreference;
+
+const NOTIFICATION_PREFERENCE_OPTIONS: Array<{
+  value: NotificationPreference;
+  label: string;
+}> = [
+  { value: 'always', label: 'Always notify me' },
+  { value: 'sector_match', label: 'Notify me only if it matches my interested sectors' },
+  { value: 'never', label: 'Never notify me' },
+];
+
+function NotificationPreferenceCard({
+  title,
+  value,
+  onChange,
+}: {
+  title: string;
+  value: NotificationPreference;
+  onChange: (value: NotificationPreference) => void;
+}) {
+  return (
+    <div className="pagecard">
+      <div className="cardblock">
+        <div>
+          <div className="sideheading">{title}</div>
+        </div>
+        <div className="fieldblocks" role="radiogroup" aria-label={title}>
+          {NOTIFICATION_PREFERENCE_OPTIONS.map((option) => {
+            const checked = value === option.value;
+
+            return (
+              <div key={option.value} className="fieldblock">
+                <button
+                  type="button"
+                  className="checkboxrow signup-checkbox"
+                  role="radio"
+                  aria-checked={checked}
+                  onClick={() => onChange(option.value)}
+                >
+                  <div className="interestchecks-row">
+                    {checked ? (
+                      <div className="checkboxtoggle checked">
+                        <NotificationCheckIcon />
+                      </div>
+                    ) : (
+                      <div className="checkboxtoggle" />
+                    )}
+                  </div>
+                  <div>
+                    <div>{option.label}</div>
+                  </div>
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function LpNotificationPreferences({
+  initialActiveOpportunityPreference,
+  initialNewOpportunityPreference,
+}: {
+  initialActiveOpportunityPreference: NotificationPreference;
+  initialNewOpportunityPreference: NotificationPreference;
+}) {
+  const [activeOpportunityPreference, setActiveOpportunityPreference] =
+    useState<NotificationPreference>(initialActiveOpportunityPreference);
+  const [newOpportunityPreference, setNewOpportunityPreference] =
+    useState<NotificationPreference>(initialNewOpportunityPreference);
+  const [saving, setSaving] = useState(false);
+  const [messageState, setMessageState] = useState<LpNotificationPreferencesActionState>({
+    status: 'idle',
+    message: '',
+  });
+
+  async function handleSave() {
+    setSaving(true);
+    setMessageState({ status: 'idle', message: '' });
+
+    const result = await updateLpNotificationPreferences({
+      activeOpportunityPreference,
+      newOpportunityPreference,
+    });
+
+    setSaving(false);
+    setMessageState(result);
+  }
+
+  return (
+    <div className="notification-preferences-cards">
+      <NotificationPreferenceCard
+        title='When an Opportunity is made "Active" or "Upcoming"'
+        value={activeOpportunityPreference}
+        onChange={setActiveOpportunityPreference}
+      />
+      <NotificationPreferenceCard
+        title="When a new Opportunity is added to the platform"
+        value={newOpportunityPreference}
+        onChange={setNewOpportunityPreference}
+      />
+
+      {messageState.message ? (
+        <div className={`speevy-form-message ${messageState.status}`}>
+          {messageState.message}
+        </div>
+      ) : null}
+
+      <div className="alignrow alignright">
+        <button
+          type="button"
+          className="button short w-button"
+          disabled={saving}
+          onClick={() => {
+            void handleSave();
+          }}
+        >
+          {saving ? 'Saving...' : 'Save Preferences'}
+        </button>
+      </div>
+    </div>
   );
 }

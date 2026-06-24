@@ -2,11 +2,15 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { GlanceChatWidget } from '@/components/glance-chat-widget';
-import { LpSettingsForm } from '@/components/settings/lp-settings-form';
+import { LpNotificationPreferences, LpSettingsForm } from '@/components/settings/lp-settings-form';
 import { InvestorProfileSquare } from '@/components/webflow/investor-profile-square';
 import { WebflowStyles } from '@/components/webflow/webflow-styles';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
+import {
+  parseLpNotificationPreference,
+  type LpNotificationPreference,
+} from '@/lib/lp/notification-preferences';
 import { createLpProfilePictureSignedUrl } from '@/lib/lp-profile-picture';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
@@ -21,6 +25,8 @@ type LpSettingsRow = {
   sectors_interested: unknown;
   investment_range_min_cents: number | string | null;
   investment_range_max_cents: number | string | null;
+  active_opportunity_notification_preference: LpNotificationPreference | null;
+  new_opportunity_notification_preference: LpNotificationPreference | null;
 };
 
 function normalizeSectors(value: unknown) {
@@ -77,7 +83,7 @@ export default async function SettingsPage() {
 
   const { data: lp } = await supabase
     .from('lps')
-    .select('id, status, email, full_name, sectors_interested, investment_range_min_cents, investment_range_max_cents, profile_picture_storage_key')
+    .select('id, status, email, full_name, sectors_interested, investment_range_min_cents, investment_range_max_cents, profile_picture_storage_key, active_opportunity_notification_preference, new_opportunity_notification_preference')
     .eq('profile_id', user.id)
     .maybeSingle<LpSettingsRow & { profile_picture_storage_key: string | null }>();
 
@@ -154,20 +160,40 @@ export default async function SettingsPage() {
                 </Link>
               </div>
 
-              <div className="tableheader">
-                <div>
-                  <div className="pagetitle">Settings</div>
-                  <div className="pagesubtitle">Keep your investor profile and deal preferences up to date.</div>
+              <div className="settings-section">
+                <div className="tableheader">
+                  <div>
+                    <div className="pagetitle">Profile Settings</div>
+                    <div className="pagesubtitle">Keep your investor profile and deal preferences up to date.</div>
+                  </div>
+                </div>
+
+                <div className="pagecard full">
+                  <LpSettingsForm
+                    email={profile?.email || lp.email || user.email || ''}
+                    initialFullName={fullName}
+                    initialSectors={sectors}
+                    initialInvestmentRangeMinCents={lp.investment_range_min_cents}
+                    initialInvestmentRangeMaxCents={lp.investment_range_max_cents}
+                  />
                 </div>
               </div>
 
-              <div className="pagecard full">
-                <LpSettingsForm
-                  email={profile?.email || lp.email || user.email || ''}
-                  initialFullName={fullName}
-                  initialSectors={sectors}
-                  initialInvestmentRangeMinCents={lp.investment_range_min_cents}
-                  initialInvestmentRangeMaxCents={lp.investment_range_max_cents}
+              <div id="notification-preferences" className="settings-section contentblock">
+                <div className="tableheader">
+                  <div>
+                    <div className="pagetitle">Notification Preferences</div>
+                    <div className="pagesubtitle">Manage which opportunities you receive email updates for.</div>
+                  </div>
+                </div>
+
+                <LpNotificationPreferences
+                  initialActiveOpportunityPreference={parseLpNotificationPreference(
+                    lp.active_opportunity_notification_preference,
+                  )}
+                  initialNewOpportunityPreference={parseLpNotificationPreference(
+                    lp.new_opportunity_notification_preference,
+                  )}
                 />
               </div>
             </div>

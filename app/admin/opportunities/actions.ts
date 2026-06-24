@@ -401,7 +401,12 @@ export async function saveOpportunityDraft(
       opportunityId: opportunity.id,
       opportunityTitle: data.title,
       opportunitySlug: slug,
+      opportunityTeaser: data.teaser || null,
       opportunitySectors: data.sectors,
+      opportunityStatus: data.status,
+      targetAllocationCents: opportunityFields.target_allocation_cents,
+      stage: opportunityFields.stage,
+      minimumInvestmentCents: opportunityFields.minimum_investment_cents,
       previousStatus,
       newStatus: data.status,
       savedAt,
@@ -418,6 +423,10 @@ export async function saveOpportunityDraft(
         opportunitySlug: slug,
         opportunityTeaser: data.teaser || null,
         opportunitySectors: data.sectors,
+        opportunityStatus: data.status,
+        targetAllocationCents: opportunityFields.target_allocation_cents,
+        stage: opportunityFields.stage,
+        minimumInvestmentCents: opportunityFields.minimum_investment_cents,
         publishedAt: opportunityFields.published_at ?? savedAt,
       });
     }

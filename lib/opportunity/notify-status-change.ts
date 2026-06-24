@@ -1,13 +1,22 @@
 import { buildAppUrl } from '@/lib/app-url';
-import { INVESTOR_SECTORS } from '@/lib/investor-request';
 import {
   hasLoopsLpOpportunityStatusChangedEnv,
   sendLpOpportunityStatusChangedEmail,
 } from '@/lib/loops/transactional';
 import {
+  findMatchingSectors,
+  normalizeSectors,
+  shouldIncludeLpForStatusChangeBroadcast,
+} from '@/lib/opportunity/broadcast-recipient-selection';
+import {
   formatOpportunityStatusChange,
+  formatStatusChangeCallout,
+  formatStatusChangeListingMessage,
+  isLpBroadcastStatusChange,
   opportunityStatusLabel,
+  statusChangeKind,
 } from '@/lib/opportunity/opportunity-status-labels';
+import { buildOpportunityEmailDetails } from '@/lib/opportunity/opportunity-email-context';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 function deriveFirstName(fullName: string | null, email: string) {
@@ -19,32 +28,16 @@ function deriveFirstName(fullName: string | null, email: string) {
   return email;
 }
 
-function normalizeSectors(value: unknown) {
-  const sectors = Array.isArray(value)
-    ? value
-    : typeof value === 'string'
-      ? [value]
-      : [];
-
-  return Array.from(new Set(
-    sectors.filter((sector): sector is string =>
-      typeof sector === 'string'
-      && sector.trim().length > 0
-      && (INVESTOR_SECTORS as readonly string[]).includes(sector),
-    ),
-  ));
-}
-
-function findMatchingSectors(lpSectors: string[], opportunitySectors: string[]) {
-  const opportunitySectorSet = new Set(opportunitySectors);
-  return lpSectors.filter((sector) => opportunitySectorSet.has(sector));
-}
-
 export async function notifyLpsOfOpportunityStatusChange(input: {
   opportunityId: string;
   opportunityTitle: string;
   opportunitySlug: string;
+  opportunityTeaser: string | null;
   opportunitySectors: string[];
+  opportunityStatus: string;
+  targetAllocationCents: number | string | null;
+  stage: string | null;
+  minimumInvestmentCents: number | string | null;
   previousStatus: string;
   newStatus: string;
   savedAt: string;
@@ -52,6 +45,7 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
   if (
     input.previousStatus === input.newStatus
     || input.newStatus === 'draft'
+    || !isLpBroadcastStatusChange(input.newStatus)
     || !hasLoopsLpOpportunityStatusChangedEnv()
   ) {
     return;
@@ -66,6 +60,14 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
     input.previousStatus,
     input.newStatus,
   );
+  const opportunityDetails = buildOpportunityEmailDetails({
+    status: input.opportunityStatus,
+    teaser: input.opportunityTeaser,
+    sectors: opportunitySectors,
+    targetAllocationCents: input.targetAllocationCents,
+    stage: input.stage,
+    minimumInvestmentCents: input.minimumInvestmentCents,
+  });
 
   const recipients = new Map<string, {
     email: string;
@@ -73,68 +75,45 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
     matchingSectors: string[];
   }>();
 
-  const { data: interestRows, error: interestError } = await supabase
-    .from('interests')
-    .select(`
-      lp_id,
-      lps (
-        email,
-        full_name
-      )
-    `)
-    .eq('opportunity_id', input.opportunityId)
-    .neq('status', 'withdrawn');
+  const { data: lpRows, error: lpError } = await supabase
+    .from('lps')
+    .select('email, full_name, sectors_interested, active_opportunity_notification_preference')
+    .eq('status', 'approved');
 
-  if (interestError) {
-    console.error('Opportunity status change interest lookup failed:', interestError.message);
-  } else {
-    for (const row of interestRows ?? []) {
-      const lp = row.lps;
-      const lpRecord = Array.isArray(lp) ? lp[0] : lp;
-      if (!lpRecord?.email) {
-        continue;
-      }
-
-      recipients.set(lpRecord.email, {
-        email: lpRecord.email,
-        fullName: lpRecord.full_name,
-        matchingSectors: [],
-      });
-    }
+  if (lpError) {
+    console.error('Opportunity status change lookup failed:', lpError.message);
+    return;
   }
 
-  if (opportunitySectors.length > 0) {
-    const { data: lpRows, error: lpError } = await supabase
-      .from('lps')
-      .select('email, full_name, sectors_interested')
-      .eq('status', 'approved');
+  for (const lp of lpRows ?? []) {
+    if (!lp.email) {
+      continue;
+    }
 
-    if (lpError) {
-      console.error('Opportunity status change sector lookup failed:', lpError.message);
-    } else {
-      for (const lp of lpRows ?? []) {
-        if (!lp.email) {
-          continue;
-        }
+    if (!shouldIncludeLpForStatusChangeBroadcast(lp, opportunitySectors, input.newStatus)) {
+      continue;
+    }
 
-        const matchingSectors = findMatchingSectors(
+    const matchingSectors = opportunitySectors.length > 0
+      ? findMatchingSectors(
           normalizeSectors(lp.sectors_interested),
           opportunitySectors,
-        );
+        )
+      : [];
 
-        if (matchingSectors.length === 0) {
-          continue;
-        }
-
-        const existing = recipients.get(lp.email);
-        recipients.set(lp.email, {
-          email: lp.email,
-          fullName: existing?.fullName ?? lp.full_name,
-          matchingSectors,
-        });
-      }
-    }
+    recipients.set(lp.email, {
+      email: lp.email,
+      fullName: lp.full_name,
+      matchingSectors,
+    });
   }
+
+  const statusChangeKindValue = statusChangeKind(input.newStatus);
+  const statusChangeCallout = formatStatusChangeCallout(input.newStatus, input.opportunityTitle);
+  const statusChangeListingMessage = formatStatusChangeListingMessage(
+    input.newStatus,
+    input.opportunityTitle,
+  );
 
   if (recipients.size === 0) {
     return;
@@ -151,7 +130,11 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
         previousStatus: previousStatusLabel,
         newStatus: newStatusLabel,
         statusChangeSummary,
+        statusChangeKind: statusChangeKindValue,
+        statusChangeCallout,
+        statusChangeListingMessage,
         matchingSectors: recipient.matchingSectors.join(', '),
+        ...opportunityDetails,
         idempotencyKey: `lp-opportunity-status-changed-${input.opportunityId}-${recipient.email}-${input.previousStatus}-${input.newStatus}-${input.savedAt}`,
       }),
     ),

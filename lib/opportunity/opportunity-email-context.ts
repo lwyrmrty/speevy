@@ -1,4 +1,5 @@
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
+import { opportunityStatusLabel } from '@/lib/opportunity/opportunity-status-labels';
 
 const EMAIL_CONTEXT_PLACEHOLDER = '—';
 
@@ -77,4 +78,31 @@ export function formatOpportunityMinimumLabel(value: number | string | null) {
   }
 
   return `$${amount.toLocaleString('en-US')} min`;
+}
+
+export type OpportunityEmailDetails = {
+  opportunityStatus: string;
+  opportunityTeaser: string;
+  opportunitySectors: string;
+  opportunityRaise: string;
+  opportunityStage: string;
+  opportunityMinimum: string;
+};
+
+export function buildOpportunityEmailDetails(input: {
+  status: string;
+  teaser: string | null;
+  sectors: unknown;
+  targetAllocationCents: number | string | null;
+  stage: string | null;
+  minimumInvestmentCents: number | string | null;
+}): OpportunityEmailDetails {
+  return {
+    opportunityStatus: opportunityStatusLabel(input.status),
+    opportunityTeaser: formatOpportunityTeaserLabel(input.teaser),
+    opportunitySectors: formatOpportunitySectorsLabel(input.sectors),
+    opportunityRaise: formatOpportunityRaiseLabel(input.targetAllocationCents),
+    opportunityStage: formatOpportunityStageLabel(input.stage),
+    opportunityMinimum: formatOpportunityMinimumLabel(input.minimumInvestmentCents),
+  };
 }

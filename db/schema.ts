@@ -82,6 +82,12 @@ export const interestStatus = pgEnum('interest_status', [
   'withdrawn',
 ]);
 
+export const lpNotificationPreference = pgEnum('lp_notification_preference', [
+  'always',
+  'sector_match',
+  'never',
+]);
+
 export const documentType = pgEnum('document_type', [
   'nda',
   'subscription_agreement',
@@ -128,6 +134,7 @@ export const auditAction = pgEnum('audit_action', [
   'tag.deleted',
   'lp.tag_added',
   'lp.tag_removed',
+  'lp.notification_preferences_updated',
   'auth.login',
   'auth.logout',
 ]);
@@ -182,6 +189,12 @@ export const lps = pgTable('lps', {
   sectorsInterested: jsonb('sectors_interested').$type<string[]>().notNull().default([]),
   investmentRangeMinCents: bigint('investment_range_min_cents', { mode: 'number' }),
   investmentRangeMaxCents: bigint('investment_range_max_cents', { mode: 'number' }),
+  newOpportunityNotificationPreference: lpNotificationPreference('new_opportunity_notification_preference')
+    .notNull()
+    .default('always'),
+  activeOpportunityNotificationPreference: lpNotificationPreference('active_opportunity_notification_preference')
+    .notNull()
+    .default('always'),
   internalNotes: text('internal_notes'),
   profilePictureStorageKey: text('profile_picture_storage_key'),
 

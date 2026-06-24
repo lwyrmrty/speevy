@@ -713,6 +713,20 @@ strong {
   display: flex;
 }
 
+.settings-section + .settings-section {
+  margin-top: 50px;
+}
+
+.notification-preferences-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.notification-preferences-cards .fieldblocks .fieldblock {
+  flex: 0 0 auto;
+}
+
 .filterpill {
   border: 1.5px solid var(--border);
   background-color: #fff9;

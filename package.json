@@ -9,6 +9,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit --incremental false",
     "verify": "pnpm typecheck && pnpm lint && pnpm build",
+    "test:notification-preferences": "pnpm dlx tsx --tsconfig tsconfig.json --test lib/opportunity/broadcast-recipient-selection.test.ts",
+    "dry-run:notification-preferences": "pnpm dlx tsx --tsconfig tsconfig.json scripts/dry-run-notification-preferences.ts",
     "check:production": "node scripts/check-production.mjs"
   },
   "dependencies": {

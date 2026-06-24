@@ -1,9 +1,14 @@
 import { buildAppUrl } from '@/lib/app-url';
-import { INVESTOR_SECTORS } from '@/lib/investor-request';
 import {
   hasLoopsLpMatchingOpportunityEnv,
   sendLpMatchingOpportunityEmail,
 } from '@/lib/loops/transactional';
+import {
+  findMatchingSectors,
+  normalizeSectors,
+  shouldIncludeLpForNewOpportunityBroadcast,
+} from '@/lib/opportunity/broadcast-recipient-selection';
+import { buildOpportunityEmailDetails } from '@/lib/opportunity/opportunity-email-context';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 function deriveFirstName(fullName: string | null, email: string) {
@@ -15,45 +20,28 @@ function deriveFirstName(fullName: string | null, email: string) {
   return email;
 }
 
-function normalizeSectors(value: unknown) {
-  const sectors = Array.isArray(value)
-    ? value
-    : typeof value === 'string'
-      ? [value]
-      : [];
-
-  return Array.from(new Set(
-    sectors.filter((sector): sector is string =>
-      typeof sector === 'string'
-      && sector.trim().length > 0
-      && (INVESTOR_SECTORS as readonly string[]).includes(sector),
-    ),
-  ));
-}
-
-function findMatchingSectors(lpSectors: string[], opportunitySectors: string[]) {
-  const opportunitySectorSet = new Set(opportunitySectors);
-  return lpSectors.filter((sector) => opportunitySectorSet.has(sector));
-}
-
 export async function notifyMatchingLpsOfNewOpportunity(input: {
   opportunityId: string;
   opportunityTitle: string;
   opportunitySlug: string;
   opportunityTeaser: string | null;
   opportunitySectors: string[];
+  opportunityStatus: string;
+  targetAllocationCents: number | string | null;
+  stage: string | null;
+  minimumInvestmentCents: number | string | null;
   publishedAt: string;
 }): Promise<void> {
-  const opportunitySectors = normalizeSectors(input.opportunitySectors);
-
-  if (opportunitySectors.length === 0 || !hasLoopsLpMatchingOpportunityEnv()) {
+  if (!hasLoopsLpMatchingOpportunityEnv()) {
     return;
   }
+
+  const opportunitySectors = normalizeSectors(input.opportunitySectors);
 
   const supabase = createSupabaseAdminClient();
   const { data: lpRows, error } = await supabase
     .from('lps')
-    .select('email, full_name, sectors_interested')
+    .select('email, full_name, sectors_interested, new_opportunity_notification_preference')
     .eq('status', 'approved');
 
   if (error) {
@@ -62,7 +50,14 @@ export async function notifyMatchingLpsOfNewOpportunity(input: {
   }
 
   const opportunityUrl = buildAppUrl(`/opportunities/${input.opportunitySlug}`);
-  const opportunityTeaser = input.opportunityTeaser?.trim() ?? '';
+  const opportunityDetails = buildOpportunityEmailDetails({
+    status: input.opportunityStatus,
+    teaser: input.opportunityTeaser,
+    sectors: opportunitySectors,
+    targetAllocationCents: input.targetAllocationCents,
+    stage: input.stage,
+    minimumInvestmentCents: input.minimumInvestmentCents,
+  });
 
   const recipients = new Map<string, {
     email: string;
@@ -75,14 +70,14 @@ export async function notifyMatchingLpsOfNewOpportunity(input: {
       continue;
     }
 
+    if (!shouldIncludeLpForNewOpportunityBroadcast(lp, opportunitySectors)) {
+      continue;
+    }
+
     const matchingSectors = findMatchingSectors(
       normalizeSectors(lp.sectors_interested),
       opportunitySectors,
     );
-
-    if (matchingSectors.length === 0) {
-      continue;
-    }
 
     recipients.set(lp.email, {
       email: lp.email,
@@ -103,8 +98,10 @@ export async function notifyMatchingLpsOfNewOpportunity(input: {
         investorName: recipient.fullName || recipient.email,
         opportunityTitle: input.opportunityTitle,
         opportunityUrl,
-        opportunityTeaser,
-        matchingSectors: recipient.matchingSectors.join(', '),
+        matchingSectors: recipient.matchingSectors.length > 0
+          ? recipient.matchingSectors.join(', ')
+          : opportunitySectors.join(', '),
+        ...opportunityDetails,
         idempotencyKey: `lp-matching-opportunity-${input.opportunityId}-${recipient.email}-${input.publishedAt}`,
       }),
     ),

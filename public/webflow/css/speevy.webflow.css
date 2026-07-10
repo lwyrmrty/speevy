@@ -2363,6 +2363,89 @@ strong {
   display: flex;
 }
 
+.documentsfolder-wrapper {
+  border: 1.5px solid var(--border);
+  background-color: #fff;
+  border-radius: 10px;
+  flex-flow: column;
+  margin-bottom: 10px;
+  display: flex;
+  overflow: hidden;
+}
+
+.documentsfolder-row {
+  border-bottom: 1.5px solid var(--border);
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: -1.5px;
+  padding: 16px 15px;
+  display: flex;
+}
+
+button.documentsfolder-row {
+  width: 100%;
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.documentsfolder-wrapper.is-collapsed .documentsfolder-row {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.documentsfolder-docs {
+  flex-flow: wrap;
+  padding: 5px;
+  display: flex;
+}
+
+.documentfolder-header {
+  margin-top: 1px;
+  margin-bottom: 0;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1em;
+}
+
+.foldertoggle-arrow {
+  opacity: .5;
+  width: 16px;
+  height: 16px;
+}
+
+.foldertoggle-row {
+  grid-column-gap: 5px;
+  grid-row-gap: 5px;
+  opacity: .4;
+  text-transform: uppercase;
+  cursor: pointer;
+  justify-content: flex-start;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all .2s;
+  display: flex;
+}
+
+.foldertoggle-row:hover {
+  opacity: 1;
+}
+
+.foldertoggle-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.ikonik-yk92b {
+  color: #fff;
+}
+
 .documenticon {
   aspect-ratio: 1;
   color: #e64346;
@@ -3890,9 +3973,9 @@ strong {
 }
 
 .docname {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 500;
-  line-height: 1.1em;
+  line-height: 1.2em;
 }
 
 .ikonik-wwa9c {

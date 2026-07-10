@@ -91,6 +91,17 @@ type RepeaterItem = {
   id: number;
 };
 
+type DocumentTagItem = {
+  id: number;
+  name: string;
+};
+
+type DocumentItem = {
+  id: number;
+  tagId: number | null;
+  updatedAt: string;
+};
+
 type PersonItem = {
   id: number;
   calloutIds: number[];
@@ -637,6 +648,7 @@ function UploadButton({
   onError,
   slug,
   onDirty,
+  onUploaded,
 }: {
   label: string;
   name: string;
@@ -646,6 +658,7 @@ function UploadButton({
   onError: (message: string) => void;
   slug: string;
   onDirty: () => void;
+  onUploaded?: () => void;
 }) {
   const sectionAssetUrls = useContext(SectionAssetUrlsContext);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -696,6 +709,7 @@ function UploadButton({
       if (file.type.startsWith('image/')) {
         setPreviewSrc(result.signedUrl);
       }
+      onUploaded?.();
       onDirty();
       return;
     }
@@ -869,76 +883,247 @@ function DocumentsDrawer({
 }) {
   const documentTitles = stringValues(initialData?.['Document-Title']);
   const documentStorageKeys = stringValues(initialData?.['Document-Storage-Key']);
-  const initialItemCount = Math.max(documentTitles.length, documentStorageKeys.length, 1);
-  const initialItems = Array.from({ length: initialItemCount }, (_, index) => ({ id: index + 1 }));
-  const [items, setItems] = useState<RepeaterItem[]>(initialItems);
+  const savedDocumentTags = stringValues(initialData?.['Document-Tag']);
+  const savedDocumentUpdatedAts = stringValues(initialData?.['Document-Updated-At']);
+  const savedSectionTags = stringValues(initialData?.['Documents-Tag']);
+  const sectionTagNames =
+    savedSectionTags.length > 0
+      ? savedSectionTags
+      : [...new Set(savedDocumentTags.filter((tag) => tag.trim().length > 0))];
+
+  const initialTags: DocumentTagItem[] = sectionTagNames.map((name, index) => ({
+    id: index + 1,
+    name,
+  }));
+  const initialItemCount = Math.max(
+    documentTitles.length,
+    documentStorageKeys.length,
+    savedDocumentTags.length,
+    savedDocumentUpdatedAts.length,
+    1,
+  );
+  const initialItems: DocumentItem[] = Array.from({ length: initialItemCount }, (_, index) => {
+    const tagName = (savedDocumentTags[index] ?? '').trim();
+    const matchedTag = initialTags.find((tag) => tag.name.trim() === tagName);
+
+    return {
+      id: index + 1,
+      tagId: matchedTag?.id ?? null,
+      updatedAt: savedDocumentUpdatedAts[index] ?? '',
+    };
+  });
+
+  const [tags, setTags] = useState<DocumentTagItem[]>(initialTags);
+  const [nextTagId, setNextTagId] = useState(initialTags.length + 1);
+  const [draggedTagId, setDraggedTagId] = useState<number | null>(null);
+  const [items, setItems] = useState<DocumentItem[]>(initialItems);
   const [nextId, setNextId] = useState(initialItems.length + 1);
   const [draggedId, setDraggedId] = useState<number | null>(null);
+
+  const namedTags = tags.filter((tag) => tag.name.trim().length > 0);
 
   return (
     <div content-type="documents" className="contenttype-block">
       <SectionIntroFields prefix="Documents" initialData={initialData} onDirty={onDirty} />
-      {items.map((item, index) => (
-        <div
-          key={item.id}
-          className="rowcard withdrag"
-          draggable
-          onDragStart={(event) => {
-            startRowDrag(event);
-            setDraggedId(item.id);
-          }}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => {
-            event.preventDefault();
-            if (draggedId !== null) {
-              setItems((current) => reorderById(current, draggedId, item.id));
-              setDraggedId(null);
-            }
-          }}
-        >
-          <div className="alignrow aligncenter stretch middle">
-            <DragHandle />
-            <div className="prompt-block">
-              <div className="alignrow aligncenter">
-                <UploadButton
-                  label="Upload document"
-                  name="Document-Storage-Key"
-                  accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  assetKind="document"
-                  initialStorageKey={documentStorageKeys[index] ?? ''}
-                  slug={uploadSlug}
-                  onDirty={onDirty}
-                  onError={onUploadError}
-                />
-                <input
-                  className="formfields w-input"
-                  maxLength={256}
-                  name="Document-Title"
-                  data-name="Document Title"
-                  placeholder="Document Title"
-                  type="text"
-                  defaultValue={documentTitles[index] ?? ''}
-                />
+
+      <div className="formfields-block spacetop">
+        <div className="fieldlabel">Tags</div>
+        <div className="rowcards wrapped">
+          {tags.map((tag) => (
+            <div
+              key={tag.id}
+              className="rowcard withdrag"
+              draggable
+              onDragStart={(event) => {
+                event.stopPropagation();
+                startRowDrag(event);
+                setDraggedTagId(tag.id);
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (draggedTagId !== null) {
+                  setTags((current) => reorderById(current, draggedTagId, tag.id));
+                  setDraggedTagId(null);
+                  onDirty();
+                }
+              }}
+            >
+              <div className="alignrow aligncenter stretch middle">
+                <DragHandle />
+                <div className="prompt-block">
+                  <input
+                    className="formfields w-input"
+                    maxLength={64}
+                    data-name="Documents Tag"
+                    placeholder="Tag name (e.g. Legal, Financials)"
+                    type="text"
+                    value={tag.name}
+                    onChange={(event) => {
+                      const nextName = event.currentTarget.value;
+                      setTags((current) =>
+                        current.map((entry) =>
+                          entry.id === tag.id ? { ...entry, name: nextName } : entry,
+                        ),
+                      );
+                      onDirty();
+                    }}
+                  />
+                  {tag.name.trim().length > 0 ? (
+                    <input type="hidden" name="Documents-Tag" value={tag.name.trim()} readOnly />
+                  ) : null}
+                </div>
+              </div>
+              <div className="rowcard-actions">
+                <button
+                  type="button"
+                  className="rowcard-action delete w-inline-block"
+                  onClick={() => {
+                    setTags((current) => current.filter((entry) => entry.id !== tag.id));
+                    setItems((current) =>
+                      current.map((document) =>
+                        document.tagId === tag.id ? { ...document, tagId: null } : document,
+                      ),
+                    );
+                    onDirty();
+                  }}
+                >
+                  <DeleteIcon />
+                </button>
               </div>
             </div>
-          </div>
-          <div className="rowcard-actions">
-            <button
-              type="button"
-              className="rowcard-action delete w-inline-block"
-              onClick={() => setItems((current) => current.filter((document) => document.id !== item.id))}
-            >
-              <DeleteIcon />
-            </button>
-          </div>
+          ))}
+          <button
+            type="button"
+            className="contentsettings-toggle rounded"
+            onClick={() => {
+              setTags((current) => [...current, { id: nextTagId, name: '' }]);
+              setNextTagId((current) => current + 1);
+              onDirty();
+            }}
+          >
+            <div>Add New Tag</div>
+          </button>
         </div>
-      ))}
+      </div>
+
+      {items.map((item, index) => {
+        const selectedTag = tags.find((tag) => tag.id === item.tagId);
+        const selectedTagName =
+          selectedTag && selectedTag.name.trim().length > 0 ? selectedTag.name.trim() : '';
+
+        return (
+          <div
+            key={item.id}
+            className="rowcard withdrag"
+            draggable
+            onDragStart={(event) => {
+              startRowDrag(event);
+              setDraggedId(item.id);
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (draggedId !== null) {
+                setItems((current) => reorderById(current, draggedId, item.id));
+                setDraggedId(null);
+                onDirty();
+              }
+            }}
+          >
+            <div className="alignrow aligncenter stretch middle">
+              <DragHandle />
+              <div className="prompt-block">
+                <div className="alignrow aligncenter">
+                  <UploadButton
+                    label="Upload document"
+                    name="Document-Storage-Key"
+                    accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    assetKind="document"
+                    initialStorageKey={documentStorageKeys[index] ?? ''}
+                    slug={uploadSlug}
+                    onDirty={onDirty}
+                    onError={onUploadError}
+                    onUploaded={() => {
+                      const uploadedAt = new Date().toISOString();
+                      setItems((current) =>
+                        current.map((document) =>
+                          document.id === item.id
+                            ? { ...document, updatedAt: uploadedAt }
+                            : document,
+                        ),
+                      );
+                    }}
+                  />
+                  <input
+                    className="formfields w-input"
+                    maxLength={256}
+                    name="Document-Title"
+                    data-name="Document Title"
+                    placeholder="Document Title"
+                    type="text"
+                    defaultValue={documentTitles[index] ?? ''}
+                    onChange={onDirty}
+                  />
+                  <select
+                    className="formfields w-input"
+                    data-name="Document Tag"
+                    aria-label="Document tag"
+                    value={selectedTagName}
+                    disabled={namedTags.length === 0}
+                    style={{ maxWidth: 180, flex: '0 0 180px' }}
+                    onChange={(event) => {
+                      const nextName = event.currentTarget.value;
+                      const matchedTag =
+                        tags.find((tag) => tag.name.trim() === nextName) ?? null;
+                      setItems((current) =>
+                        current.map((document) =>
+                          document.id === item.id
+                            ? { ...document, tagId: matchedTag?.id ?? null }
+                            : document,
+                        ),
+                      );
+                      onDirty();
+                    }}
+                  >
+                    <option value="">{namedTags.length === 0 ? 'Add tags above' : 'No tag'}</option>
+                    {namedTags.map((tag) => (
+                      <option key={tag.id} value={tag.name.trim()}>
+                        {tag.name.trim()}
+                      </option>
+                    ))}
+                  </select>
+                  <input type="hidden" name="Document-Tag" value={selectedTagName} readOnly />
+                  <input type="hidden" name="Document-Updated-At" value={item.updatedAt} readOnly />
+                </div>
+              </div>
+            </div>
+            <div className="rowcard-actions">
+              <button
+                type="button"
+                className="rowcard-action delete w-inline-block"
+                onClick={() => {
+                  setItems((current) => current.filter((document) => document.id !== item.id));
+                  onDirty();
+                }}
+              >
+                <DeleteIcon />
+              </button>
+            </div>
+          </div>
+        );
+      })}
       <button
         type="button"
         className="contentsettings-toggle rounded"
         onClick={() => {
-          setItems((current) => [...current, { id: nextId }]);
+          setItems((current) => [...current, { id: nextId, tagId: null, updatedAt: '' }]);
           setNextId((current) => current + 1);
+          onDirty();
         }}
       >
         <div>Add New Document</div>

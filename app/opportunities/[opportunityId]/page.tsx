@@ -404,13 +404,20 @@ function DocumentsSection({
   const description = firstString(section.data['Documents-Description']);
   const documents = asStringArray(section.data['Document-Title']);
   const documentStorageKeys = asStringArray(section.data['Document-Storage-Key']);
+  const documentTags = asStringArray(section.data['Document-Tag']);
+  const documentUpdatedAts = asStringArray(section.data['Document-Updated-At']);
+  const tagOrder = asStringArray(section.data['Documents-Tag']);
   const documentItems = documents.map((documentTitle, index) => {
     const storageKey = documentStorageKeys[index] ?? '';
+    const tag = documentTags[index]?.trim() ?? '';
+    const updatedAt = documentUpdatedAts[index]?.trim() ?? '';
 
     return {
       title: documentTitle,
       url: assetUrls[storageKey] ?? '',
       fileType: storageKey.toLowerCase().endsWith('.docx') ? 'docx' as const : 'pdf' as const,
+      tag: tag.length > 0 ? tag : null,
+      updatedAt: updatedAt.length > 0 ? updatedAt : null,
     };
   });
 
@@ -418,7 +425,11 @@ function DocumentsSection({
     <div id={sectionAnchor(section)} className="contentsection">
       <h1 className="contentheading">{title}</h1>
       {description ? <RichTextValue value={description} /> : null}
-      <DocumentViewerDrawer documents={documentItems} watermarkEmail={watermarkEmail} />
+      <DocumentViewerDrawer
+        documents={documentItems}
+        tagOrder={tagOrder}
+        watermarkEmail={watermarkEmail}
+      />
     </div>
   );
 }

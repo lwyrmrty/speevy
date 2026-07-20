@@ -87,8 +87,12 @@ export type OpportunityEditorInitialData = {
 
 const SectionAssetUrlsContext = createContext<Record<string, string>>({});
 
-type RepeaterItem = {
+type NewsLinkItem = {
   id: number;
+  title: string;
+  url: string;
+  date: string;
+  imageStorageKey: string;
 };
 
 type DocumentTagItem = {
@@ -658,7 +662,7 @@ function UploadButton({
   onError: (message: string) => void;
   slug: string;
   onDirty: () => void;
-  onUploaded?: () => void;
+  onUploaded?: (storageKey: string) => void;
 }) {
   const sectionAssetUrls = useContext(SectionAssetUrlsContext);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -668,23 +672,28 @@ function UploadButton({
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    if (!initialStorageKey) {
+    // Prefer the instance's own key so parent reorders that pass a new
+    // index-based initialStorageKey cannot swap the thumbnail preview.
+    const effectiveKey = storageKey || initialStorageKey;
+    if (!effectiveKey) {
       return;
     }
 
-    setStorageKey((current) => current || initialStorageKey);
+    if (!storageKey && initialStorageKey) {
+      setStorageKey(initialStorageKey);
+    }
 
     if (assetKind === 'document') {
       setPreviewType('document');
       return;
     }
 
-    const signedUrl = sectionAssetUrls[initialStorageKey];
+    const signedUrl = sectionAssetUrls[effectiveKey];
     if (signedUrl) {
       setPreviewType('image');
       setPreviewSrc(signedUrl);
     }
-  }, [assetKind, initialStorageKey, sectionAssetUrls]);
+  }, [assetKind, initialStorageKey, sectionAssetUrls, storageKey]);
 
   const handleChange = async (file: File) => {
     if (file.type.startsWith('image/')) {
@@ -709,7 +718,7 @@ function UploadButton({
       if (file.type.startsWith('image/')) {
         setPreviewSrc(result.signedUrl);
       }
-      onUploaded?.();
+      onUploaded?.(result.storageKey);
       onDirty();
       return;
     }
@@ -778,15 +787,28 @@ function NewsAndMilestonesDrawer({
     linkImages.length,
     1,
   );
-  const initialItems = Array.from({ length: initialItemCount }, (_, index) => ({ id: index + 1 }));
-  const [items, setItems] = useState<RepeaterItem[]>(initialItems);
+  const initialItems: NewsLinkItem[] = Array.from({ length: initialItemCount }, (_, index) => ({
+    id: index + 1,
+    title: linkTitles[index] ?? '',
+    url: linkUrls[index] ?? '',
+    date: linkDates[index] ?? '',
+    imageStorageKey: linkImages[index] ?? '',
+  }));
+  const [items, setItems] = useState<NewsLinkItem[]>(initialItems);
   const [nextId, setNextId] = useState(initialItems.length + 1);
   const [draggedId, setDraggedId] = useState<number | null>(null);
+
+  const updateItem = (id: number, patch: Partial<Omit<NewsLinkItem, 'id'>>) => {
+    setItems((current) =>
+      current.map((link) => (link.id === id ? { ...link, ...patch } : link)),
+    );
+    onDirty();
+  };
 
   return (
     <div content-type="links" className="contenttype-block">
       <SectionIntroFields prefix="Links" initialData={initialData} onDirty={onDirty} />
-      {items.map((item, index) => (
+      {items.map((item) => (
         <div
           key={item.id}
           className="rowcard withdrag"
@@ -801,6 +823,7 @@ function NewsAndMilestonesDrawer({
             if (draggedId !== null) {
               setItems((current) => reorderById(current, draggedId, item.id));
               setDraggedId(null);
+              onDirty();
             }
           }}
         >
@@ -811,10 +834,13 @@ function NewsAndMilestonesDrawer({
                 <UploadButton
                   label="Upload thumbnail"
                   name="Link-Image-Storage-Key"
-                  initialStorageKey={linkImages[index] ?? ''}
+                  initialStorageKey={item.imageStorageKey}
                   slug={uploadSlug}
                   onDirty={onDirty}
                   onError={onUploadError}
+                  onUploaded={(storageKey) => {
+                    updateItem(item.id, { imageStorageKey: storageKey });
+                  }}
                 />
                 <input
                   className="formfields w-input"
@@ -823,7 +849,8 @@ function NewsAndMilestonesDrawer({
                   data-name="Link Title"
                   placeholder="Title"
                   type="text"
-                  defaultValue={linkTitles[index] ?? ''}
+                  value={item.title}
+                  onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })}
                 />
                 <input
                   className="formfields w-input"
@@ -831,7 +858,8 @@ function NewsAndMilestonesDrawer({
                   data-name="Link Date"
                   placeholder="Date"
                   type="date"
-                  defaultValue={linkDates[index] ?? ''}
+                  value={item.date}
+                  onChange={(event) => updateItem(item.id, { date: event.currentTarget.value })}
                 />
               </div>
               <input
@@ -841,7 +869,8 @@ function NewsAndMilestonesDrawer({
                 data-name="Link URL"
                 placeholder="Article or milestone link"
                 type="url"
-                defaultValue={linkUrls[index] ?? ''}
+                value={item.url}
+                onChange={(event) => updateItem(item.id, { url: event.currentTarget.value })}
               />
             </div>
           </div>
@@ -849,7 +878,10 @@ function NewsAndMilestonesDrawer({
             <button
               type="button"
               className="rowcard-action delete w-inline-block"
-              onClick={() => setItems((current) => current.filter((link) => link.id !== item.id))}
+              onClick={() => {
+                setItems((current) => current.filter((link) => link.id !== item.id));
+                onDirty();
+              }}
             >
               <DeleteIcon />
             </button>
@@ -860,8 +892,12 @@ function NewsAndMilestonesDrawer({
         type="button"
         className="contentsettings-toggle rounded"
         onClick={() => {
-          setItems((current) => [...current, { id: nextId }]);
+          setItems((current) => [
+            ...current,
+            { id: nextId, title: '', url: '', date: '', imageStorageKey: '' },
+          ]);
           setNextId((current) => current + 1);
+          onDirty();
         }}
       >
         <div>Add News or Milestone</div>

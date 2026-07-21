@@ -33,6 +33,13 @@ type ViewRow = {
   entity_id: string | null;
 };
 
+type SortDirection = 'asc' | 'desc';
+type SortField = 'interest' | 'interested' | 'viewed';
+type OpportunitySort = {
+  field: SortField;
+  direction: SortDirection;
+};
+
 const statusLabels: Record<OpportunityStatus, string> = {
   active: 'Active',
   potential: 'Potential',
@@ -59,12 +66,51 @@ const statusSortOrder: Record<OpportunityStatus, number> = {
   closed: 3,
 };
 
+const sortFields: SortField[] = ['interest', 'interested', 'viewed'];
+
 function centsToNumber(value: number | string | null) {
   if (value === null) {
     return 0;
   }
 
   return Number(value);
+}
+
+function getOpportunitySort(value: string | string[] | undefined): OpportunitySort | null {
+  const sort = Array.isArray(value) ? value[0] : value;
+
+  if (!sort) {
+    return null;
+  }
+
+  for (const field of sortFields) {
+    if (sort === `${field}_asc` || sort === `${field}_desc`) {
+      return {
+        field,
+        direction: sort === `${field}_asc` ? 'asc' : 'desc',
+      };
+    }
+  }
+
+  return null;
+}
+
+function sortHref(
+  field: SortField,
+  sort: OpportunitySort | null,
+  statusFilter: OpportunityStatusFilterValue,
+) {
+  const nextDirection: SortDirection =
+    sort?.field === field && sort.direction === 'desc' ? 'asc' : 'desc';
+  const params = new URLSearchParams();
+
+  params.set('sort', `${field}_${nextDirection}`);
+
+  if (statusFilter !== 'all') {
+    params.set('status', statusFilter);
+  }
+
+  return `/admin/opportunities?${params.toString()}`;
 }
 
 function formatCompactCurrency(cents: number) {
@@ -114,11 +160,16 @@ function parseStatusFilter(value: string | string[] | undefined): OpportunitySta
 export default async function AdminOpportunitiesPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string | string[]; status?: string | string[] }>;
+  searchParams?: Promise<{
+    page?: string | string[];
+    status?: string | string[];
+    sort?: string | string[];
+  }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const statusFilter = parseStatusFilter(resolvedSearchParams.status);
   const page = parsePageParam(resolvedSearchParams.page);
+  const opportunitySort = getOpportunitySort(resolvedSearchParams.sort);
   const supabase = createSupabaseAdminClient();
   const { data: opportunitiesData } = await supabase
     .from('opportunities')
@@ -217,6 +268,32 @@ export default async function AdminOpportunitiesPage({
       },
     })),
   );
+
+  if (opportunitySort) {
+    const direction = opportunitySort.direction === 'asc' ? 1 : -1;
+
+    rows.sort((a, b) => {
+      const aValue =
+        opportunitySort.field === 'interest'
+          ? a.metrics.interestAmountCents
+          : opportunitySort.field === 'interested'
+            ? a.metrics.interestedCount
+            : a.metrics.viewedCount;
+      const bValue =
+        opportunitySort.field === 'interest'
+          ? b.metrics.interestAmountCents
+          : opportunitySort.field === 'interested'
+            ? b.metrics.interestedCount
+            : b.metrics.viewedCount;
+
+      if (aValue === bValue) {
+        return a.title.localeCompare(b.title);
+      }
+
+      return (aValue - bValue) * direction;
+    });
+  }
+
   const paginated = paginateArray(rows, page, DEFAULT_PAGE_SIZE);
   const pageRows = paginated.rows;
 
@@ -247,15 +324,57 @@ export default async function AdminOpportunitiesPage({
                   </div>
                   <div>Opportunity</div>
                 </div>
-                <div className="tablecell">
-                  <div>Interest Value</div>
-                </div>
-                <div className="tablecell">
-                  <div>Interested</div>
-                </div>
-                <div className="tablecell">
-                  <div>Viewed</div>
-                </div>
+                <Link
+                  href={sortHref('interest', opportunitySort, statusFilter)}
+                  className="tablecell speevy-sort-cell"
+                  aria-label="Sort opportunities by interest value"
+                  aria-current={opportunitySort?.field === 'interest' ? 'true' : undefined}
+                >
+                  <span className="speevy-table-sort-button">
+                    <span>Interest Value</span>
+                    <span className="speevy-sort-indicator">
+                      {opportunitySort?.field === 'interest'
+                        ? opportunitySort.direction === 'desc'
+                          ? '↓'
+                          : '↑'
+                        : '↕'}
+                    </span>
+                  </span>
+                </Link>
+                <Link
+                  href={sortHref('interested', opportunitySort, statusFilter)}
+                  className="tablecell speevy-sort-cell"
+                  aria-label="Sort opportunities by interested investors"
+                  aria-current={opportunitySort?.field === 'interested' ? 'true' : undefined}
+                >
+                  <span className="speevy-table-sort-button">
+                    <span>Interested</span>
+                    <span className="speevy-sort-indicator">
+                      {opportunitySort?.field === 'interested'
+                        ? opportunitySort.direction === 'desc'
+                          ? '↓'
+                          : '↑'
+                        : '↕'}
+                    </span>
+                  </span>
+                </Link>
+                <Link
+                  href={sortHref('viewed', opportunitySort, statusFilter)}
+                  className="tablecell speevy-sort-cell"
+                  aria-label="Sort opportunities by views"
+                  aria-current={opportunitySort?.field === 'viewed' ? 'true' : undefined}
+                >
+                  <span className="speevy-table-sort-button">
+                    <span>Viewed</span>
+                    <span className="speevy-sort-indicator">
+                      {opportunitySort?.field === 'viewed'
+                        ? opportunitySort.direction === 'desc'
+                          ? '↓'
+                          : '↑'
+                        : '↕'}
+                    </span>
+                  </span>
+                </Link>
                 <div className="tablecell actions">
                   <div>Actions</div>
                 </div>
@@ -263,8 +382,11 @@ export default async function AdminOpportunitiesPage({
               {pageRows.length ? (
                 pageRows.map((opportunity) => {
                   const targetAllocationCents = centsToNumber(opportunity.target_allocation_cents);
-                  const interestPercent = targetAllocationCents
-                    ? Math.round((opportunity.metrics.interestAmountCents / targetAllocationCents) * 100)
+                  const interestAmountCents = opportunity.metrics.interestAmountCents;
+                  const hasTarget = targetAllocationCents > 0;
+                  const hasInterest = interestAmountCents > 0;
+                  const interestPercent = hasTarget
+                    ? Math.round((interestAmountCents / targetAllocationCents) * 100)
                     : null;
                   const progressWidth = interestPercent === null
                     ? 0
@@ -297,9 +419,9 @@ export default async function AdminOpportunitiesPage({
                         </div>
                       </div>
                       <div className="tablecell">
-                        {interestPercent === null ? (
+                        {!hasTarget && !hasInterest ? (
                           <div>-</div>
-                        ) : (
+                        ) : hasTarget ? (
                           <div className="interestrow">
                             <div className="interestbar">
                               <div
@@ -309,12 +431,14 @@ export default async function AdminOpportunitiesPage({
                                 <div className="percentinterest">{interestPercent}%</div>
                               </div>
                               <div className="dollarinterest">
-                                {formatCompactCurrency(opportunity.metrics.interestAmountCents)}{' '}
+                                {formatCompactCurrency(interestAmountCents)}{' '}
                                 <span className="dollarinterest-of">of</span>{' '}
                                 {formatCompactCurrency(targetAllocationCents)}
                               </div>
                             </div>
                           </div>
+                        ) : (
+                          <div>{formatCompactCurrency(interestAmountCents)}</div>
                         )}
                       </div>
                       <div className="tablecell">

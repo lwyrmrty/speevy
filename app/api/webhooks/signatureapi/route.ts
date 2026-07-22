@@ -3,6 +3,7 @@ import { Webhook, WebhookVerificationError } from 'standardwebhooks';
 
 import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
+import { buildLoopsIdempotencyKey } from '@/lib/loops/idempotency';
 import { hasLoopsNdaSignedEnv, sendNdaSignedCopyEmail } from '@/lib/loops/transactional';
 import { createNdaDownloadToken } from '@/lib/nda/tokens';
 import {
@@ -420,7 +421,11 @@ async function sendSignedCopyEmailSafe(args: {
     }
 
     const downloadUrl = buildAppUrl(`/nda/download/${createNdaDownloadToken(tier, rowId)}`);
-    const idempotencyKey = `nda-signed-copy-${tier}-${rowId}`;
+    const idempotencyKey = buildLoopsIdempotencyKey(
+      'nda-signed-copy',
+      tier,
+      rowId,
+    );
 
     await sendNdaSignedCopyEmail({
       email: lp.email,

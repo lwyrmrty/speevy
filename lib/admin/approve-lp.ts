@@ -1,9 +1,10 @@
 import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
+import { buildAppUrl } from '@/lib/app-url';
+import { buildLoopsIdempotencyKey } from '@/lib/loops/idempotency';
 import {
   hasLoopsLpApprovedEnv,
   sendLpApprovedEmail,
 } from '@/lib/loops/transactional';
-import { buildAppUrl } from '@/lib/app-url';
 import { notifySlackInvestorJoined } from '@/lib/slack/notifications';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
@@ -45,7 +46,11 @@ async function sendLpApprovedEmailForInvestor(
   }
 
   try {
-    const idempotencyKey = `lp-approved-${investor.id}-${approvedAt}`;
+    const idempotencyKey = buildLoopsIdempotencyKey(
+      'lp-approved',
+      investor.id,
+      approvedAt,
+    );
 
     await sendLpApprovedEmail({
       approvedAt,

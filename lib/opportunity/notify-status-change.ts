@@ -1,5 +1,6 @@
 import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
+import { buildLoopsIdempotencyKey } from '@/lib/loops/idempotency';
 import {
   mapWithConcurrency,
   summarizeSettledResults,
@@ -140,7 +141,14 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
   }
 
   const results = await mapWithConcurrency([...recipients.values()], async (recipient) => {
-    const idempotencyKey = `lp-opportunity-status-changed-${input.opportunityId}-${recipient.email}-${input.previousStatus}-${input.newStatus}-${input.savedAt}`;
+    const idempotencyKey = buildLoopsIdempotencyKey(
+      'lp-opportunity-status-changed',
+      input.opportunityId,
+      recipient.email,
+      input.previousStatus,
+      input.newStatus,
+      input.savedAt,
+    );
 
     await withLoopsRetry(
       () => sendLpOpportunityStatusChangedEmail({

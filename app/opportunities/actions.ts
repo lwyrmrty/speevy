@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { buildAppUrl } from '@/lib/app-url';
+import { buildLoopsIdempotencyKey } from '@/lib/loops/idempotency';
 import {
   hasLoopsAdminInterestEnv,
   hasLoopsLoginCodeEnv,
@@ -208,7 +209,12 @@ async function sendAdminInterestNotification({
     investorName,
     opportunityTitle,
     opportunityUrl: buildAppUrl(`/opportunities/${opportunitySlug}`),
-    idempotencyKey: `interest-${opportunityId}-${recipientEmail}-${indicatedAt}`,
+    idempotencyKey: buildLoopsIdempotencyKey(
+      'interest',
+      opportunityId,
+      recipientEmail,
+      indicatedAt,
+    ),
   });
 }
 

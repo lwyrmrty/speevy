@@ -1,5 +1,6 @@
 import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
+import { buildLoopsIdempotencyKey } from '@/lib/loops/idempotency';
 import {
   mapWithConcurrency,
   summarizeSettledResults,
@@ -88,7 +89,11 @@ export async function notifyFollowersOfOpportunityUpdate(input: {
   const opportunityStage = formatOpportunityStageLabel(input.stage);
   const opportunityMinimum = formatOpportunityMinimumLabel(input.minimumInvestmentCents);
   const results = await mapWithConcurrency([...recipients.values()], async (recipient) => {
-    const idempotencyKey = `follow-update-${input.broadcastId}-${recipient.email}`;
+    const idempotencyKey = buildLoopsIdempotencyKey(
+      'follow-update',
+      input.broadcastId,
+      recipient.email,
+    );
 
     await withLoopsRetry(
       () => sendLpOpportunityUpdatedEmail({

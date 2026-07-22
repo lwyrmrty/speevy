@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
+import { buildLoopsIdempotencyKey } from '@/lib/loops/idempotency';
 import {
   hasLoopsLpApprovedEnv,
   sendLpApprovedEmail,
@@ -83,7 +84,11 @@ export async function POST(request: Request) {
   if (hasLoopsLpApprovedEnv()) {
     const results = await Promise.allSettled(
       (investors ?? []).map(async (investor) => {
-        const idempotencyKey = `lp-approved-${investor.id}-${now}`;
+        const idempotencyKey = buildLoopsIdempotencyKey(
+          'lp-approved',
+          investor.id,
+          now,
+        );
 
         await sendLpApprovedEmail({
           approvedAt: now,

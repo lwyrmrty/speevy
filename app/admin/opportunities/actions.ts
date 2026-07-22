@@ -1,5 +1,6 @@
 'use server';
 
+import { after } from 'next/server';
 import { z } from 'zod';
 
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
@@ -8,6 +9,9 @@ import { notifyMatchingLpsOfNewOpportunity } from '@/lib/opportunity/notify-sect
 import { notifyLpsOfOpportunityStatusChange } from '@/lib/opportunity/notify-status-change';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
+
+// Opportunity saves can fan out Loops emails to every approved LP.
+export const maxDuration = 60;
 
 const statusSchema = z.enum(['draft', 'potential', 'upcoming', 'active', 'closed']);
 const opportunityAssetKindSchema = z.enum(['thumbnail', 'logo', 'section', 'document']);
@@ -395,41 +399,52 @@ export async function saveOpportunityDraft(
   }
 
   const previousStatus = existingOpportunity?.status ?? 'draft';
+  const shouldNotifyStatusChange = previousStatus !== data.status;
+  const shouldNotifyNewOpportunity = data.status !== 'draft' && !existingOpportunity?.published_at;
 
-  if (previousStatus !== data.status) {
-    await notifyLpsOfOpportunityStatusChange({
-      opportunityId: opportunity.id,
-      opportunityTitle: data.title,
-      opportunitySlug: slug,
-      opportunityTeaser: data.teaser || null,
-      opportunitySectors: data.sectors,
-      opportunityStatus: data.status,
-      targetAllocationCents: opportunityFields.target_allocation_cents,
-      stage: opportunityFields.stage,
-      minimumInvestmentCents: opportunityFields.minimum_investment_cents,
-      previousStatus,
-      newStatus: data.status,
-      savedAt,
+  // Send LP emails after the save response so the editor isn't blocked, and so a
+  // long fan-out can't get truncated by the interactive request lifecycle.
+  if (shouldNotifyStatusChange || shouldNotifyNewOpportunity) {
+    after(async () => {
+      try {
+        if (shouldNotifyStatusChange) {
+          await notifyLpsOfOpportunityStatusChange({
+            opportunityId: opportunity.id,
+            opportunityTitle: data.title,
+            opportunitySlug: slug,
+            opportunityTeaser: data.teaser || null,
+            opportunitySectors: data.sectors,
+            opportunityStatus: data.status,
+            targetAllocationCents: opportunityFields.target_allocation_cents,
+            stage: opportunityFields.stage,
+            minimumInvestmentCents: opportunityFields.minimum_investment_cents,
+            previousStatus,
+            newStatus: data.status,
+            savedAt,
+          });
+        }
+
+        if (shouldNotifyNewOpportunity) {
+          await notifyMatchingLpsOfNewOpportunity({
+            opportunityId: opportunity.id,
+            opportunityTitle: data.title,
+            opportunitySlug: slug,
+            opportunityTeaser: data.teaser || null,
+            opportunitySectors: data.sectors,
+            opportunityStatus: data.status,
+            targetAllocationCents: opportunityFields.target_allocation_cents,
+            stage: opportunityFields.stage,
+            minimumInvestmentCents: opportunityFields.minimum_investment_cents,
+            publishedAt: opportunityFields.published_at ?? savedAt,
+          });
+        }
+      } catch (error) {
+        console.error(
+          'Opportunity LP notification fan-out failed:',
+          error instanceof Error ? error.message : error,
+        );
+      }
     });
-  }
-
-  if (data.status !== 'draft') {
-    const isFirstPublication = !existingOpportunity?.published_at;
-
-    if (isFirstPublication) {
-      await notifyMatchingLpsOfNewOpportunity({
-        opportunityId: opportunity.id,
-        opportunityTitle: data.title,
-        opportunitySlug: slug,
-        opportunityTeaser: data.teaser || null,
-        opportunitySectors: data.sectors,
-        opportunityStatus: data.status,
-        targetAllocationCents: opportunityFields.target_allocation_cents,
-        stage: opportunityFields.stage,
-        minimumInvestmentCents: opportunityFields.minimum_investment_cents,
-        publishedAt: opportunityFields.published_at ?? savedAt,
-      });
-    }
   }
 
   return { status: 'success', opportunityId: opportunity.id, slug, savedAt };

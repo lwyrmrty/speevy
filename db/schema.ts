@@ -135,6 +135,7 @@ export const auditAction = pgEnum('audit_action', [
   'lp.tag_added',
   'lp.tag_removed',
   'lp.notification_preferences_updated',
+  'email.sent',
   'auth.login',
   'auth.logout',
 ]);

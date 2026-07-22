@@ -115,6 +115,20 @@ function getLoopsApiKey() {
   return process.env.LOOPS_API_KEY;
 }
 
+/** Loops data variables must be strings; blank/undefined renders as empty in the template. */
+function loopsVar(value: string | number | null | undefined, fallback = '—') {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : fallback;
+  }
+
+  return fallback;
+}
+
 function getLoginCodeTemplateId() {
   return process.env.LOOPS_TEMPLATE_LOGIN_CODE;
 }
@@ -313,14 +327,16 @@ export async function sendAdminInterestEmail({
     body: JSON.stringify({
       transactionalId,
       email,
+      // Loops template "LP Interest" declares:
+      // investorName, amount, opportunityTitle, adminInterestUrl
       dataVariables: {
-        adminInterestUrl,
-        amount,
-        indicatedAt,
-        investorEmail,
-        investorName,
-        opportunityTitle,
-        opportunityUrl,
+        investorName: loopsVar(investorName),
+        amount: loopsVar(amount),
+        opportunityTitle: loopsVar(opportunityTitle),
+        adminInterestUrl: loopsVar(adminInterestUrl, ''),
+        indicatedAt: loopsVar(indicatedAt),
+        investorEmail: loopsVar(investorEmail),
+        opportunityUrl: loopsVar(opportunityUrl, ''),
       },
     }),
   });
@@ -369,14 +385,15 @@ export async function sendAdminLpAccessRequestEmail({
     body: JSON.stringify({
       transactionalId,
       email,
+      // Loops template "LP Requests Access" declares: lpName, lpEmail, companyName
       dataVariables: {
-        adminInvestorsUrl,
-        companyName,
-        investmentRange,
-        investorEmail,
-        investorName,
-        sectors,
-        submittedAt,
+        lpName: loopsVar(investorName),
+        lpEmail: loopsVar(investorEmail),
+        companyName: loopsVar(companyName),
+        adminInvestorsUrl: loopsVar(adminInvestorsUrl, ''),
+        investmentRange: loopsVar(investmentRange),
+        sectors: loopsVar(sectors),
+        submittedAt: loopsVar(submittedAt),
       },
     }),
   });
@@ -449,17 +466,12 @@ export async function sendLpApprovedEmail({
 
 export async function sendLpOpportunityUpdatedEmail({
   email,
-  firstName,
-  investorName,
   opportunityTitle,
   opportunityUrl,
-  updateCount,
-  updateHeadline,
   updateSummary,
   opportunitySectors = '',
   opportunityRaise = '',
   opportunityStage = '',
-  opportunityMinimum = '',
   opportunityTeaser = '',
   idempotencyKey,
 }: SendLpOpportunityUpdatedEmailParams) {
@@ -480,19 +492,15 @@ export async function sendLpOpportunityUpdatedEmail({
     body: JSON.stringify({
       transactionalId,
       email,
+      // Keep payload aligned with Loops template "Opportunity Update" dataVariables.
       dataVariables: {
-        firstName,
-        investorName,
-        opportunityTitle,
-        opportunityUrl,
-        updateCount,
-        updateHeadline,
-        updateSummary,
-        opportunitySectors,
-        opportunityRaise,
-        opportunityStage,
-        opportunityMinimum,
-        opportunityTeaser,
+        opportunityTitle: loopsVar(opportunityTitle),
+        updateSummary: loopsVar(updateSummary),
+        opportunityTeaser: loopsVar(opportunityTeaser),
+        opportunitySectors: loopsVar(opportunitySectors),
+        opportunityStage: loopsVar(opportunityStage),
+        opportunityRaise: loopsVar(opportunityRaise),
+        opportunityUrl: loopsVar(opportunityUrl, ''),
       },
     }),
   });
@@ -515,23 +523,13 @@ export async function sendLpOpportunityUpdatedEmail({
 
 export async function sendLpOpportunityStatusChangedEmail({
   email,
-  firstName,
-  investorName,
   opportunityTitle,
   opportunityUrl,
-  previousStatus,
-  newStatus,
-  statusChangeSummary,
-  statusChangeKind,
-  statusChangeCallout,
   statusChangeListingMessage,
-  matchingSectors,
-  opportunityStatus,
   opportunityTeaser,
   opportunitySectors,
   opportunityRaise,
   opportunityStage,
-  opportunityMinimum,
   idempotencyKey,
 }: SendLpOpportunityStatusChangedEmailParams) {
   const apiKey = getLoopsApiKey();
@@ -551,24 +549,15 @@ export async function sendLpOpportunityStatusChangedEmail({
     body: JSON.stringify({
       transactionalId,
       email,
+      // Keep payload aligned with Loops template "Opportunity Status Change" dataVariables.
       dataVariables: {
-        firstName,
-        investorName,
-        opportunityTitle,
-        opportunityUrl,
-        previousStatus,
-        newStatus,
-        statusChangeSummary,
-        statusChangeKind,
-        statusChangeCallout,
-        statusChangeListingMessage,
-        matchingSectors,
-        opportunityStatus,
-        opportunityTeaser,
-        opportunitySectors,
-        opportunityRaise,
-        opportunityStage,
-        opportunityMinimum,
+        statusChangeListingMessage: loopsVar(statusChangeListingMessage),
+        opportunityTitle: loopsVar(opportunityTitle),
+        opportunityTeaser: loopsVar(opportunityTeaser),
+        opportunitySectors: loopsVar(opportunitySectors),
+        opportunityStage: loopsVar(opportunityStage),
+        opportunityRaise: loopsVar(opportunityRaise),
+        opportunityUrl: loopsVar(opportunityUrl, ''),
       },
     }),
   });
@@ -591,17 +580,13 @@ export async function sendLpOpportunityStatusChangedEmail({
 
 export async function sendLpMatchingOpportunityEmail({
   email,
-  firstName,
-  investorName,
   opportunityTitle,
   opportunityUrl,
-  matchingSectors,
   opportunityStatus,
   opportunityTeaser,
   opportunitySectors,
   opportunityRaise,
   opportunityStage,
-  opportunityMinimum,
   idempotencyKey,
 }: SendLpMatchingOpportunityEmailParams) {
   const apiKey = getLoopsApiKey();
@@ -621,18 +606,15 @@ export async function sendLpMatchingOpportunityEmail({
     body: JSON.stringify({
       transactionalId,
       email,
+      // Keep payload aligned with Loops template "New Opportunity Added" dataVariables.
       dataVariables: {
-        firstName,
-        investorName,
-        opportunityTitle,
-        opportunityUrl,
-        matchingSectors,
-        opportunityStatus,
-        opportunityTeaser,
-        opportunitySectors,
-        opportunityRaise,
-        opportunityStage,
-        opportunityMinimum,
+        opportunityTitle: loopsVar(opportunityTitle),
+        opportunityTeaser: loopsVar(opportunityTeaser),
+        opportunityStatus: loopsVar(opportunityStatus),
+        opportunitySectors: loopsVar(opportunitySectors),
+        opportunityStage: loopsVar(opportunityStage),
+        opportunityRaise: loopsVar(opportunityRaise),
+        opportunityUrl: loopsVar(opportunityUrl, ''),
       },
     }),
   });

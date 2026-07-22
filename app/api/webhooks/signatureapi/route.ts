@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Webhook, WebhookVerificationError } from 'standardwebhooks';
 
+import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
 import { hasLoopsNdaSignedEnv, sendNdaSignedCopyEmail } from '@/lib/loops/transactional';
 import { createNdaDownloadToken } from '@/lib/nda/tokens';
@@ -419,6 +420,7 @@ async function sendSignedCopyEmailSafe(args: {
     }
 
     const downloadUrl = buildAppUrl(`/nda/download/${createNdaDownloadToken(tier, rowId)}`);
+    const idempotencyKey = `nda-signed-copy-${tier}-${rowId}`;
 
     await sendNdaSignedCopyEmail({
       email: lp.email,
@@ -428,7 +430,14 @@ async function sendSignedCopyEmailSafe(args: {
       downloadUrl,
       // One email per stored deliverable row; the webhook event dedupe upstream
       // already guarantees this branch runs once per delivery.
-      idempotencyKey: `nda-signed-copy-${tier}-${rowId}`,
+      idempotencyKey,
+    });
+
+    await logLpEmailSent({
+      lpId,
+      template: 'nda_copy',
+      ndaName,
+      idempotencyKey,
     });
   } catch (error) {
     console.error(

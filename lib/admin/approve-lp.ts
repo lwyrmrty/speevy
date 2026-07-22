@@ -1,3 +1,4 @@
+import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import {
   hasLoopsLpApprovedEnv,
   sendLpApprovedEmail,
@@ -44,13 +45,21 @@ async function sendLpApprovedEmailForInvestor(
   }
 
   try {
+    const idempotencyKey = `lp-approved-${investor.id}-${approvedAt}`;
+
     await sendLpApprovedEmail({
       approvedAt,
       email: investor.email,
       firstName: deriveFirstName(investor.full_name, investor.email),
       investorName: investor.full_name || investor.email,
       loginUrl: buildAppUrl('/login'),
-      idempotencyKey: `lp-approved-${investor.id}-${approvedAt}`,
+      idempotencyKey,
+    });
+
+    await logLpEmailSent({
+      lpId: investor.id,
+      template: 'approved',
+      idempotencyKey,
     });
   } catch (error) {
     console.error(

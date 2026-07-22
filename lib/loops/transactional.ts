@@ -1,3 +1,5 @@
+import { assertLoopsIdempotencyKey } from '@/lib/loops/idempotency';
+
 type SendLoginCodeEmailParams = {
   email: string;
   loginCode: string;
@@ -266,7 +268,7 @@ export async function sendLpSignupReceivedEmail({
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'Idempotency-Key': idempotencyKey,
+      'Idempotency-Key': assertLoopsIdempotencyKey(idempotencyKey),
     },
     body: JSON.stringify({
       transactionalId,
@@ -322,7 +324,7 @@ export async function sendAdminInterestEmail({
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'Idempotency-Key': idempotencyKey,
+      'Idempotency-Key': assertLoopsIdempotencyKey(idempotencyKey),
     },
     body: JSON.stringify({
       transactionalId,
@@ -380,7 +382,7 @@ export async function sendAdminLpAccessRequestEmail({
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'Idempotency-Key': idempotencyKey,
+      'Idempotency-Key': assertLoopsIdempotencyKey(idempotencyKey),
     },
     body: JSON.stringify({
       transactionalId,
@@ -434,7 +436,7 @@ export async function sendLpApprovedEmail({
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'Idempotency-Key': idempotencyKey,
+      'Idempotency-Key': assertLoopsIdempotencyKey(idempotencyKey),
     },
     body: JSON.stringify({
       transactionalId,
@@ -487,7 +489,7 @@ export async function sendLpOpportunityUpdatedEmail({
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'Idempotency-Key': idempotencyKey,
+      'Idempotency-Key': assertLoopsIdempotencyKey(idempotencyKey),
     },
     body: JSON.stringify({
       transactionalId,
@@ -544,7 +546,7 @@ export async function sendLpOpportunityStatusChangedEmail({
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'Idempotency-Key': idempotencyKey,
+      'Idempotency-Key': assertLoopsIdempotencyKey(idempotencyKey),
     },
     body: JSON.stringify({
       transactionalId,
@@ -601,7 +603,7 @@ export async function sendLpMatchingOpportunityEmail({
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'Idempotency-Key': idempotencyKey,
+      'Idempotency-Key': assertLoopsIdempotencyKey(idempotencyKey),
     },
     body: JSON.stringify({
       transactionalId,
@@ -658,7 +660,7 @@ export async function sendNdaSignedCopyEmail({
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'Idempotency-Key': idempotencyKey,
+      'Idempotency-Key': assertLoopsIdempotencyKey(idempotencyKey),
     },
     body: JSON.stringify({
       transactionalId,

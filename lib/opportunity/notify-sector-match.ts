@@ -1,5 +1,6 @@
 import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
+import { buildLoopsIdempotencyKey } from '@/lib/loops/idempotency';
 import {
   mapWithConcurrency,
   summarizeSettledResults,
@@ -105,7 +106,12 @@ export async function notifyMatchingLpsOfNewOpportunity(input: {
   }
 
   const results = await mapWithConcurrency([...recipients.values()], async (recipient) => {
-    const idempotencyKey = `lp-matching-opportunity-${input.opportunityId}-${recipient.email}-${input.publishedAt}`;
+    const idempotencyKey = buildLoopsIdempotencyKey(
+      'lp-matching-opportunity',
+      input.opportunityId,
+      recipient.email,
+      input.publishedAt,
+    );
 
     await withLoopsRetry(
       () => sendLpMatchingOpportunityEmail({

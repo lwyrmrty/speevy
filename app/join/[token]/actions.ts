@@ -11,6 +11,7 @@ import {
 } from '@/lib/investor-request';
 import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
+import { buildLoopsIdempotencyKey } from '@/lib/loops/idempotency';
 import {
   hasLoopsAdminLpAccessRequestEnv,
   hasLoopsLpSignupReceivedEnv,
@@ -200,7 +201,12 @@ export async function submitInvestorRequest(
           investorName: fullName,
           sectors: request.sectors.join(', '),
           submittedAt,
-          idempotencyKey: `lp-access-request-${normalizedEmail}-${admin.email}-${submittedAt}`,
+          idempotencyKey: buildLoopsIdempotencyKey(
+            'lp-access-request',
+            normalizedEmail,
+            admin.email,
+            submittedAt,
+          ),
         }),
       ),
     );
@@ -210,7 +216,11 @@ export async function submitInvestorRequest(
   if (hasLoopsLpSignupReceivedEnv()) {
     const results = await Promise.allSettled([
       (async () => {
-        const idempotencyKey = `lp-signup-received-${normalizedEmail}-${submittedAt}`;
+        const idempotencyKey = buildLoopsIdempotencyKey(
+          'lp-signup-received',
+          normalizedEmail,
+          submittedAt,
+        );
 
         await sendLpSignupReceivedEmail({
           companyName: request.companyName,

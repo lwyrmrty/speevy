@@ -9,6 +9,7 @@ import {
   INVESTOR_SECTORS,
   formatInvestmentRange,
 } from '@/lib/investor-request';
+import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
 import {
   hasLoopsAdminLpAccessRequestEnv,
@@ -208,17 +209,27 @@ export async function submitInvestorRequest(
 
   if (hasLoopsLpSignupReceivedEnv()) {
     const results = await Promise.allSettled([
-      sendLpSignupReceivedEmail({
-        companyName: request.companyName,
-        email: normalizedEmail,
-        firstName: request.firstName,
-        investmentRange,
-        investorName: fullName,
-        ndaOnboardingUrl: onboardingUrl,
-        sectors: request.sectors.join(', '),
-        submittedAt,
-        idempotencyKey: `lp-signup-received-${normalizedEmail}-${submittedAt}`,
-      }),
+      (async () => {
+        const idempotencyKey = `lp-signup-received-${normalizedEmail}-${submittedAt}`;
+
+        await sendLpSignupReceivedEmail({
+          companyName: request.companyName,
+          email: normalizedEmail,
+          firstName: request.firstName,
+          investmentRange,
+          investorName: fullName,
+          ndaOnboardingUrl: onboardingUrl,
+          sectors: request.sectors.join(', '),
+          submittedAt,
+          idempotencyKey,
+        });
+
+        await logLpEmailSent({
+          lpId: lead.id,
+          template: 'signup_received',
+          idempotencyKey,
+        });
+      })(),
     ]);
     logEmailFailures('LP signup received email', results);
   }

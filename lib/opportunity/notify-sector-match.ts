@@ -1,4 +1,10 @@
+import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
+import {
+  mapWithConcurrency,
+  summarizeSettledResults,
+  withLoopsRetry,
+} from '@/lib/loops/rate-limited';
 import {
   hasLoopsLpMatchingOpportunityEnv,
   sendLpMatchingOpportunityEmail,
@@ -33,6 +39,9 @@ export async function notifyMatchingLpsOfNewOpportunity(input: {
   publishedAt: string;
 }): Promise<void> {
   if (!hasLoopsLpMatchingOpportunityEnv()) {
+    console.error(
+      `New opportunity emails skipped for ${input.opportunitySlug}: LOOPS_TEMPLATE_LP_MATCHING_OPPORTUNITY (or LOOPS_API_KEY) is not configured.`,
+    );
     return;
   }
 
@@ -41,7 +50,7 @@ export async function notifyMatchingLpsOfNewOpportunity(input: {
   const supabase = createSupabaseAdminClient();
   const { data: lpRows, error } = await supabase
     .from('lps')
-    .select('email, full_name, sectors_interested, new_opportunity_notification_preference')
+    .select('id, email, full_name, sectors_interested, new_opportunity_notification_preference')
     .eq('status', 'approved');
 
   if (error) {
@@ -60,13 +69,14 @@ export async function notifyMatchingLpsOfNewOpportunity(input: {
   });
 
   const recipients = new Map<string, {
+    lpId: string;
     email: string;
     fullName: string | null;
     matchingSectors: string[];
   }>();
 
   for (const lp of lpRows ?? []) {
-    if (!lp.email) {
+    if (!lp.id || !lp.email) {
       continue;
     }
 
@@ -80,6 +90,7 @@ export async function notifyMatchingLpsOfNewOpportunity(input: {
     );
 
     recipients.set(lp.email, {
+      lpId: lp.id,
       email: lp.email,
       fullName: lp.full_name,
       matchingSectors,
@@ -87,12 +98,17 @@ export async function notifyMatchingLpsOfNewOpportunity(input: {
   }
 
   if (recipients.size === 0) {
+    console.warn(
+      `New opportunity emails skipped for ${input.opportunitySlug}: no eligible LP recipients.`,
+    );
     return;
   }
 
-  await Promise.allSettled(
-    [...recipients.values()].map((recipient) =>
-      sendLpMatchingOpportunityEmail({
+  const results = await mapWithConcurrency([...recipients.values()], async (recipient) => {
+    const idempotencyKey = `lp-matching-opportunity-${input.opportunityId}-${recipient.email}-${input.publishedAt}`;
+
+    await withLoopsRetry(
+      () => sendLpMatchingOpportunityEmail({
         email: recipient.email,
         firstName: deriveFirstName(recipient.fullName, recipient.email),
         investorName: recipient.fullName || recipient.email,
@@ -102,8 +118,21 @@ export async function notifyMatchingLpsOfNewOpportunity(input: {
           ? recipient.matchingSectors.join(', ')
           : opportunitySectors.join(', '),
         ...opportunityDetails,
-        idempotencyKey: `lp-matching-opportunity-${input.opportunityId}-${recipient.email}-${input.publishedAt}`,
+        idempotencyKey,
       }),
-    ),
+      { label: `New opportunity email to ${recipient.email}` },
+    );
+
+    await logLpEmailSent({
+      lpId: recipient.lpId,
+      template: 'new_opportunity',
+      opportunityId: input.opportunityId,
+      idempotencyKey,
+    });
+  });
+
+  summarizeSettledResults(
+    results,
+    `New opportunity emails for ${input.opportunitySlug}`,
   );
 }

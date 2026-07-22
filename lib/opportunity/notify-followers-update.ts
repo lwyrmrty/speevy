@@ -1,4 +1,10 @@
+import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
+import {
+  mapWithConcurrency,
+  summarizeSettledResults,
+  withLoopsRetry,
+} from '@/lib/loops/rate-limited';
 import {
   hasLoopsLpOpportunityUpdatedEnv,
   sendLpOpportunityUpdatedEmail,
@@ -55,16 +61,17 @@ export async function notifyFollowersOfOpportunityUpdate(input: {
     throw new Error('Unable to load opportunity followers.');
   }
 
-  const recipients = new Map<string, { email: string; fullName: string | null }>();
+  const recipients = new Map<string, { lpId: string; email: string; fullName: string | null }>();
 
   for (const row of followRows ?? []) {
     const lp = row.lps;
     const lpRecord = Array.isArray(lp) ? lp[0] : lp;
-    if (!lpRecord?.email) {
+    if (!row.lp_id || !lpRecord?.email) {
       continue;
     }
 
     recipients.set(lpRecord.email, {
+      lpId: row.lp_id,
       email: lpRecord.email,
       fullName: lpRecord.full_name,
     });
@@ -80,9 +87,11 @@ export async function notifyFollowersOfOpportunityUpdate(input: {
   const opportunityRaise = formatOpportunityRaiseLabel(input.targetAllocationCents);
   const opportunityStage = formatOpportunityStageLabel(input.stage);
   const opportunityMinimum = formatOpportunityMinimumLabel(input.minimumInvestmentCents);
-  const results = await Promise.allSettled(
-    [...recipients.values()].map((recipient) =>
-      sendLpOpportunityUpdatedEmail({
+  const results = await mapWithConcurrency([...recipients.values()], async (recipient) => {
+    const idempotencyKey = `follow-update-${input.broadcastId}-${recipient.email}`;
+
+    await withLoopsRetry(
+      () => sendLpOpportunityUpdatedEmail({
         email: recipient.email,
         firstName: deriveFirstName(recipient.fullName, recipient.email),
         investorName: recipient.fullName || recipient.email,
@@ -96,20 +105,29 @@ export async function notifyFollowersOfOpportunityUpdate(input: {
         opportunityRaise,
         opportunityStage,
         opportunityMinimum,
-        idempotencyKey: `follow-update-${input.broadcastId}-${recipient.email}`,
+        idempotencyKey,
       }),
-    ),
-  );
+      { label: `Follower update email to ${recipient.email}` },
+    );
 
-  const emailFailures = results.filter((result) => result.status === 'rejected').length;
-  const firstFailure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    await logLpEmailSent({
+      lpId: recipient.lpId,
+      template: 'follower_update',
+      opportunityId: input.opportunityId,
+      idempotencyKey,
+    });
+  });
+
+  const { failed: emailFailures } = summarizeSettledResults(
+    results,
+    `Follower update emails for ${input.opportunitySlug}`,
+  );
+  const firstFailure = results.find(
+    (result): result is PromiseRejectedResult => result.status === 'rejected',
+  );
   const failureMessage = firstFailure?.reason instanceof Error
     ? firstFailure.reason.message
     : undefined;
-
-  if (failureMessage) {
-    console.error('Follower update email failed:', failureMessage);
-  }
 
   return { recipientCount: recipients.size, emailFailures, failureMessage };
 }

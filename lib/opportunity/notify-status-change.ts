@@ -1,4 +1,10 @@
+import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
+import {
+  mapWithConcurrency,
+  summarizeSettledResults,
+  withLoopsRetry,
+} from '@/lib/loops/rate-limited';
 import {
   hasLoopsLpOpportunityStatusChangedEnv,
   sendLpOpportunityStatusChangedEmail,
@@ -42,12 +48,21 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
   newStatus: string;
   savedAt: string;
 }): Promise<void> {
-  if (
-    input.previousStatus === input.newStatus
-    || input.newStatus === 'draft'
-    || !isLpBroadcastStatusChange(input.newStatus)
-    || !hasLoopsLpOpportunityStatusChangedEnv()
-  ) {
+  if (input.previousStatus === input.newStatus || input.newStatus === 'draft') {
+    return;
+  }
+
+  if (!isLpBroadcastStatusChange(input.newStatus)) {
+    console.info(
+      `Opportunity status change emails skipped for ${input.opportunitySlug}: ${input.previousStatus} → ${input.newStatus} is not a broadcasted transition.`,
+    );
+    return;
+  }
+
+  if (!hasLoopsLpOpportunityStatusChangedEnv()) {
+    console.error(
+      `Opportunity status change emails skipped for ${input.opportunitySlug}: LOOPS_TEMPLATE_LP_OPPORTUNITY_STATUS_CHANGED (or LOOPS_API_KEY) is not configured.`,
+    );
     return;
   }
 
@@ -70,6 +85,7 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
   });
 
   const recipients = new Map<string, {
+    lpId: string;
     email: string;
     fullName: string | null;
     matchingSectors: string[];
@@ -77,7 +93,7 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
 
   const { data: lpRows, error: lpError } = await supabase
     .from('lps')
-    .select('email, full_name, sectors_interested, active_opportunity_notification_preference')
+    .select('id, email, full_name, sectors_interested, active_opportunity_notification_preference')
     .eq('status', 'approved');
 
   if (lpError) {
@@ -86,7 +102,7 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
   }
 
   for (const lp of lpRows ?? []) {
-    if (!lp.email) {
+    if (!lp.id || !lp.email) {
       continue;
     }
 
@@ -102,6 +118,7 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
       : [];
 
     recipients.set(lp.email, {
+      lpId: lp.id,
       email: lp.email,
       fullName: lp.full_name,
       matchingSectors,
@@ -116,12 +133,17 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
   );
 
   if (recipients.size === 0) {
+    console.warn(
+      `Opportunity status change skipped for ${input.opportunitySlug}: no eligible LP recipients.`,
+    );
     return;
   }
 
-  await Promise.allSettled(
-    [...recipients.values()].map((recipient) =>
-      sendLpOpportunityStatusChangedEmail({
+  const results = await mapWithConcurrency([...recipients.values()], async (recipient) => {
+    const idempotencyKey = `lp-opportunity-status-changed-${input.opportunityId}-${recipient.email}-${input.previousStatus}-${input.newStatus}-${input.savedAt}`;
+
+    await withLoopsRetry(
+      () => sendLpOpportunityStatusChangedEmail({
         email: recipient.email,
         firstName: deriveFirstName(recipient.fullName, recipient.email),
         investorName: recipient.fullName || recipient.email,
@@ -135,8 +157,23 @@ export async function notifyLpsOfOpportunityStatusChange(input: {
         statusChangeListingMessage,
         matchingSectors: recipient.matchingSectors.join(', '),
         ...opportunityDetails,
-        idempotencyKey: `lp-opportunity-status-changed-${input.opportunityId}-${recipient.email}-${input.previousStatus}-${input.newStatus}-${input.savedAt}`,
+        idempotencyKey,
       }),
-    ),
+      { label: `Status change email to ${recipient.email}` },
+    );
+
+    await logLpEmailSent({
+      lpId: recipient.lpId,
+      template: 'status_change',
+      opportunityId: input.opportunityId,
+      previousStatus: previousStatusLabel,
+      newStatus: newStatusLabel,
+      idempotencyKey,
+    });
+  });
+
+  summarizeSettledResults(
+    results,
+    `Opportunity status change emails for ${input.opportunitySlug}`,
   );
 }

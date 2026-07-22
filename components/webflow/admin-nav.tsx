@@ -56,6 +56,7 @@ export async function AdminNav() {
           <WebflowMobileNavMenu>
             <div className="navalign speevy-nav-link-row">
               <AdminNavLink href="/admin/activity">Activity</AdminNavLink>
+              <AdminNavLink href="/admin/messages">Messages</AdminNavLink>
               <AdminNavLink href="/admin/opportunities">Opportunities</AdminNavLink>
               <AdminNavLink href="/admin/investors">Investors</AdminNavLink>
               <AdminNavLink href="/admin/tags">Tags</AdminNavLink>

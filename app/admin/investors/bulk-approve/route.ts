@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 
+import { logLpEmailSent } from '@/lib/admin/log-lp-email-sent';
 import { buildAppUrl } from '@/lib/app-url';
 import {
   hasLoopsLpApprovedEnv,
@@ -81,16 +82,24 @@ export async function POST(request: Request) {
 
   if (hasLoopsLpApprovedEnv()) {
     const results = await Promise.allSettled(
-      (investors ?? []).map((investor) =>
-        sendLpApprovedEmail({
+      (investors ?? []).map(async (investor) => {
+        const idempotencyKey = `lp-approved-${investor.id}-${now}`;
+
+        await sendLpApprovedEmail({
           approvedAt: now,
           email: investor.email,
           firstName: investor.full_name?.trim().split(/\s+/)[0] || investor.email,
           investorName: investor.full_name || investor.email,
           loginUrl: buildAppUrl('/login'),
-          idempotencyKey: `lp-approved-${investor.id}-${now}`,
-        }),
-      ),
+          idempotencyKey,
+        });
+
+        await logLpEmailSent({
+          lpId: investor.id,
+          template: 'approved',
+          idempotencyKey,
+        });
+      }),
     );
     results.forEach((result) => {
       if (result.status === 'rejected') {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { mapWithConcurrency, withLoopsRetry } from './rate-limited.ts';
+import { mapWithConcurrency, withLoopsRetry } from './rate-limited';
 
 describe('mapWithConcurrency', () => {
   it('preserves order and limits peak concurrency', async () => {

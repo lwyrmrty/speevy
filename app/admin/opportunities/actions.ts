@@ -6,7 +6,11 @@ import { z } from 'zod';
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
 import { notifyFollowersOfOpportunityUpdate } from '@/lib/opportunity/notify-followers-update';
 import { notifyMatchingLpsOfNewOpportunity } from '@/lib/opportunity/notify-sector-match';
-import { notifyLpsOfOpportunityStatusChange } from '@/lib/opportunity/notify-status-change';
+import {
+  notifyLpsOfComingSoon,
+  notifyLpsOfOpportunityStatusChange,
+} from '@/lib/opportunity/notify-status-change';
+import { shouldNotifyComingSoonFlip } from '@/lib/opportunity/opportunity-status-labels';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -273,7 +277,7 @@ export async function saveOpportunityDraft(
     ? { data: null }
     : await adminSupabase
         .from('opportunities')
-        .select('id, published_at, status')
+        .select('id, published_at, status, coming_soon')
         .eq('slug', slug)
         .maybeSingle();
 
@@ -396,12 +400,22 @@ export async function saveOpportunityDraft(
   }
 
   const previousStatus = existingOpportunity?.status ?? 'draft';
+  const previousComingSoon = existingOpportunity?.coming_soon === true;
+  const newComingSoon = opportunityFields.coming_soon === true;
   const shouldNotifyStatusChange = previousStatus !== data.status;
   const shouldNotifyNewOpportunity = data.status !== 'draft' && !existingOpportunity?.published_at;
+  // Coming Soon-only: false → true while already upcoming. If this save also
+  // transitions into upcoming, the status-change email carries Coming Soon copy.
+  const shouldNotifyComingSoon = shouldNotifyComingSoonFlip({
+    previousStatus,
+    newStatus: data.status,
+    previousComingSoon,
+    newComingSoon,
+  });
 
   // Send LP emails after the save response so the editor isn't blocked, and so a
   // long fan-out can't get truncated by the interactive request lifecycle.
-  if (shouldNotifyStatusChange || shouldNotifyNewOpportunity) {
+  if (shouldNotifyStatusChange || shouldNotifyNewOpportunity || shouldNotifyComingSoon) {
     after(async () => {
       try {
         if (shouldNotifyStatusChange) {
@@ -417,6 +431,22 @@ export async function saveOpportunityDraft(
             minimumInvestmentCents: opportunityFields.minimum_investment_cents,
             previousStatus,
             newStatus: data.status,
+            comingSoon: newComingSoon,
+            savedAt,
+          });
+        }
+
+        if (shouldNotifyComingSoon) {
+          await notifyLpsOfComingSoon({
+            opportunityId: opportunity.id,
+            opportunityTitle: data.title,
+            opportunitySlug: slug,
+            opportunityTeaser: data.teaser || null,
+            opportunitySectors: data.sectors,
+            opportunityStatus: data.status,
+            targetAllocationCents: opportunityFields.target_allocation_cents,
+            stage: opportunityFields.stage,
+            minimumInvestmentCents: opportunityFields.minimum_investment_cents,
             savedAt,
           });
         }

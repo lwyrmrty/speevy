@@ -48,7 +48,34 @@ export function formatStatusChangeCallout(newStatus: string, opportunityTitle: s
   return `${title} is now ${opportunityStatusLabel(newStatus)} on Speevy.`;
 }
 
-export function formatStatusChangeListingMessage(newStatus: string, opportunityTitle: string) {
+/** Listing copy when Coming Soon flips on (false → true) while status is upcoming. */
+export function formatComingSoonListingMessage(opportunityTitle: string) {
+  const title = opportunityTitle.trim() || 'This opportunity';
+  return `${title} is now marked as Coming Soon, and may be opening for allocation soon.`;
+}
+
+/**
+ * True when we should send a dedicated Coming Soon broadcast.
+ * Requires false → true while status remains upcoming. Status transitions into
+ * upcoming fold Coming Soon into the status-change email instead.
+ */
+export function shouldNotifyComingSoonFlip(input: {
+  previousStatus: string;
+  newStatus: string;
+  previousComingSoon: boolean;
+  newComingSoon: boolean;
+}) {
+  return input.newComingSoon
+    && !input.previousComingSoon
+    && input.newStatus === 'upcoming'
+    && input.previousStatus === 'upcoming';
+}
+
+export function formatStatusChangeListingMessage(
+  newStatus: string,
+  opportunityTitle: string,
+  options?: { comingSoon?: boolean },
+) {
   const title = opportunityTitle.trim() || 'This opportunity';
 
   if (newStatus === 'active') {
@@ -56,6 +83,12 @@ export function formatStatusChangeListingMessage(newStatus: string, opportunityT
   }
 
   if (newStatus === 'upcoming') {
+    // When an opportunity lands in Upcoming already marked Coming Soon, fold that
+    // signal into the status-change email instead of sending a second broadcast.
+    if (options?.comingSoon) {
+      return formatComingSoonListingMessage(opportunityTitle);
+    }
+
     return `${title} is now listed as Upcoming, and may be opening for allocation soon`;
   }
 

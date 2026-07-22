@@ -10,9 +10,6 @@ import { notifyLpsOfOpportunityStatusChange } from '@/lib/opportunity/notify-sta
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
-// Opportunity saves can fan out Loops emails to every approved LP.
-export const maxDuration = 60;
-
 const statusSchema = z.enum(['draft', 'potential', 'upcoming', 'active', 'closed']);
 const opportunityAssetKindSchema = z.enum(['thumbnail', 'logo', 'section', 'document']);
 const opportunityAssetsBucket = 'opportunity-assets';

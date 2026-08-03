@@ -17,16 +17,14 @@ import {
   type SetStateAction,
 } from 'react';
 
-import {
-  saveOpportunityDraft,
-  uploadOpportunityAsset,
-} from '@/app/admin/opportunities/actions';
+import { saveOpportunityDraft } from '@/app/admin/opportunities/actions';
 import { OpportunityFollowerNotifyCard } from '@/components/webflow/opportunity-follower-notify-card';
 import { buildAppUrl } from '@/lib/app-url';
 import { Select } from '@/components/base/select/select';
 import { WebflowPasswordField } from '@/components/webflow/password-field';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { INVESTOR_SECTORS, type InvestorSector } from '@/lib/investor-request';
+import { uploadOpportunityAssetDirect } from '@/lib/opportunity/upload-asset-client';
 
 type OpportunityStatus = 'draft' | 'potential' | 'upcoming' | 'active' | 'closed';
 type SectionType = 'richContent' | 'links' | 'media' | 'documents' | 'team' | 'investors';
@@ -711,12 +709,11 @@ function UploadButton({
     }
     setUploading(true);
 
-    const formData = new FormData();
-    formData.set('slug', slug);
-    formData.set('kind', assetKind);
-    formData.set('file', file);
-
-    const result = await uploadOpportunityAsset(formData);
+    const result = await uploadOpportunityAssetDirect({
+      slug,
+      kind: assetKind,
+      file,
+    });
     setUploading(false);
 
     if (result.status === 'success') {
@@ -2318,12 +2315,11 @@ export function OpportunityEditor({
     setSaveStatus('saving');
     setSaveMessage(kind === 'thumbnail' ? 'Uploading thumbnail...' : 'Uploading logo...');
 
-    const formData = new FormData();
-    formData.set('slug', isCreating ? slugify(title) : initialData.slug);
-    formData.set('kind', kind);
-    formData.set('file', file);
-
-    const result = await uploadOpportunityAsset(formData);
+    const result = await uploadOpportunityAssetDirect({
+      slug: isCreating ? slugify(title) : initialData.slug,
+      kind,
+      file,
+    });
 
     if (result.status === 'success') {
       if (kind === 'thumbnail') {

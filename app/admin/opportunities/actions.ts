@@ -84,6 +84,20 @@ export type UploadOpportunityAssetResult =
   | { status: 'success'; storageKey: string; signedUrl: string }
   | { status: 'error'; message: string };
 
+export type PrepareOpportunityAssetUploadResult =
+  | {
+      status: 'success';
+      storageKey: string;
+      path: string;
+      token: string;
+      uploadUrl: string;
+      contentType: string;
+    }
+  | { status: 'error'; message: string };
+
+/** Keep in sync with Supabase bucket fileSizeLimit below. */
+const opportunityAssetMaxBytes = 50 * 1024 * 1024;
+
 async function getAdminProfile() {
   const serverSupabase = await createSupabaseServerClient();
   const {
@@ -125,17 +139,33 @@ function safeFileName(name: string) {
     .replace(/^-+|-+$/g, '');
 }
 
-function resolveDocumentContentType(file: File) {
-  if (documentAssetMimeTypes.includes(file.type)) {
-    return file.type;
+function resolveDocumentContentType(fileName: string, contentType: string) {
+  if (documentAssetMimeTypes.includes(contentType)) {
+    return contentType;
   }
 
-  const lowerName = file.name.toLowerCase();
+  const lowerName = fileName.toLowerCase();
   if (lowerName.endsWith('.pdf')) {
     return 'application/pdf';
   }
   if (lowerName.endsWith('.docx')) {
     return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+
+  return null;
+}
+
+function resolveOpportunityAssetContentType(
+  kind: z.infer<typeof opportunityAssetKindSchema>,
+  fileName: string,
+  contentType: string,
+) {
+  if (kind === 'document') {
+    return resolveDocumentContentType(fileName, contentType);
+  }
+
+  if (contentType.startsWith('image/') && opportunityAssetMimeTypes.includes(contentType)) {
+    return contentType;
   }
 
   return null;
@@ -221,7 +251,7 @@ async function ensureOpportunityAssetsBucket() {
   if (buckets?.some((bucket) => bucket.name === opportunityAssetsBucket)) {
     const { error: updateError } = await supabase.storage.updateBucket(opportunityAssetsBucket, {
       public: false,
-      fileSizeLimit: '10MB',
+      fileSizeLimit: '50MB',
       allowedMimeTypes: opportunityAssetMimeTypes,
     });
 
@@ -230,13 +260,124 @@ async function ensureOpportunityAssetsBucket() {
 
   const { error: createError } = await supabase.storage.createBucket(opportunityAssetsBucket, {
     public: false,
-    fileSizeLimit: '10MB',
+    fileSizeLimit: '50MB',
     allowedMimeTypes: opportunityAssetMimeTypes,
   });
 
   return { supabase, error: createError?.message ?? null };
 }
 
+const prepareOpportunityAssetUploadSchema = z.object({
+  slug: z.string().trim().min(1),
+  kind: opportunityAssetKindSchema,
+  fileName: z.string().trim().min(1).max(512),
+  contentType: z.string().trim().min(1).max(200),
+  fileSize: z.number().int().positive().max(opportunityAssetMaxBytes),
+});
+
+/**
+ * Mint a short-lived Supabase signed upload URL so the browser can PUT the file
+ * directly to Storage. Large pitch decks exceed Vercel's ~4.5MB request body
+ * limit when proxied through a Server Action.
+ */
+export async function prepareOpportunityAssetUpload(
+  input: z.infer<typeof prepareOpportunityAssetUploadSchema>,
+): Promise<PrepareOpportunityAssetUploadResult> {
+  const { error: authError } = await getAdminProfile();
+  if (authError) {
+    return { status: 'error', message: authError };
+  }
+
+  const parsed = prepareOpportunityAssetUploadSchema.safeParse(input);
+  if (!parsed.success) {
+    const tooLarge = parsed.error.issues.some((issue) => issue.path[0] === 'fileSize');
+    return {
+      status: 'error',
+      message: tooLarge
+        ? 'File is too large. Maximum upload size is 50MB.'
+        : parsed.error.issues[0]?.message ?? 'Invalid upload request.',
+    };
+  }
+
+  const resolvedContentType = resolveOpportunityAssetContentType(
+    parsed.data.kind,
+    parsed.data.fileName,
+    parsed.data.contentType,
+  );
+
+  if (!resolvedContentType) {
+    return {
+      status: 'error',
+      message: parsed.data.kind === 'document'
+        ? 'Only PDF or DOCX uploads are supported for documents.'
+        : 'Only image uploads are supported here.',
+    };
+  }
+
+  const { supabase, error: bucketError } = await ensureOpportunityAssetsBucket();
+  if (bucketError) {
+    return { status: 'error', message: bucketError };
+  }
+
+  const storageKey = `opportunities/${parsed.data.slug}/${parsed.data.kind}-${Date.now()}-${safeFileName(parsed.data.fileName)}`;
+  const { data, error } = await supabase.storage
+    .from(opportunityAssetsBucket)
+    .createSignedUploadUrl(storageKey, { upsert: true });
+
+  if (error || !data?.signedUrl || !data.token || !data.path) {
+    return {
+      status: 'error',
+      message: error?.message ?? 'Could not prepare upload URL.',
+    };
+  }
+
+  return {
+    status: 'success',
+    storageKey,
+    path: data.path,
+    token: data.token,
+    uploadUrl: data.signedUrl,
+    contentType: resolvedContentType,
+  };
+}
+
+const finalizeOpportunityAssetUploadSchema = z.object({
+  storageKey: z.string().trim().min(1).max(1024),
+});
+
+export async function finalizeOpportunityAssetUpload(
+  input: z.infer<typeof finalizeOpportunityAssetUploadSchema>,
+): Promise<UploadOpportunityAssetResult> {
+  const { error: authError } = await getAdminProfile();
+  if (authError) {
+    return { status: 'error', message: authError };
+  }
+
+  const parsed = finalizeOpportunityAssetUploadSchema.safeParse(input);
+  if (!parsed.success || !parsed.data.storageKey.startsWith('opportunities/')) {
+    return { status: 'error', message: 'Invalid storage key.' };
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    .from(opportunityAssetsBucket)
+    .createSignedUrl(parsed.data.storageKey, 60 * 60);
+
+  if (signedUrlError || !signedUrlData?.signedUrl) {
+    return {
+      status: 'error',
+      message: signedUrlError?.message ?? 'File uploaded, but preview URL failed.',
+    };
+  }
+
+  return {
+    status: 'success',
+    storageKey: parsed.data.storageKey,
+    signedUrl: signedUrlData.signedUrl,
+  };
+}
+
+/** @deprecated Prefer direct-to-storage uploads via prepareOpportunityAssetUpload. */
 export async function uploadOpportunityAsset(
   formData: FormData,
 ): Promise<UploadOpportunityAssetResult> {
@@ -254,14 +395,20 @@ export async function uploadOpportunityAsset(
     return { status: 'error', message: 'Choose a file to upload.' };
   }
 
-  const isDocumentUpload = kind.data === 'document';
-  const documentContentType = isDocumentUpload ? resolveDocumentContentType(file) : null;
-  const isImage = file.type.startsWith('image/');
+  if (file.size > opportunityAssetMaxBytes) {
+    return { status: 'error', message: 'File is too large. Maximum upload size is 50MB.' };
+  }
 
-  if (isDocumentUpload ? !documentContentType : !isImage) {
+  const resolvedContentType = resolveOpportunityAssetContentType(
+    kind.data,
+    file.name,
+    file.type,
+  );
+
+  if (!resolvedContentType) {
     return {
       status: 'error',
-      message: isDocumentUpload
+      message: kind.data === 'document'
         ? 'Only PDF or DOCX uploads are supported for documents.'
         : 'Only image uploads are supported here.',
     };
@@ -277,7 +424,7 @@ export async function uploadOpportunityAsset(
   const { error: uploadError } = await supabase.storage
     .from(opportunityAssetsBucket)
     .upload(storageKey, file, {
-      contentType: documentContentType ?? file.type,
+      contentType: resolvedContentType,
       upsert: true,
     });
 
@@ -285,22 +432,7 @@ export async function uploadOpportunityAsset(
     return { status: 'error', message: uploadError.message };
   }
 
-  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-    .from(opportunityAssetsBucket)
-    .createSignedUrl(storageKey, 60 * 60);
-
-  if (signedUrlError || !signedUrlData?.signedUrl) {
-    return {
-      status: 'error',
-      message: signedUrlError?.message ?? 'Image uploaded, but preview URL failed.',
-    };
-  }
-
-  return {
-    status: 'success',
-    storageKey,
-    signedUrl: signedUrlData.signedUrl,
-  };
+  return finalizeOpportunityAssetUpload({ storageKey });
 }
 
 export async function saveOpportunityDraft(

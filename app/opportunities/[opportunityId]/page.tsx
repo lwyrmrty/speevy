@@ -196,6 +196,25 @@ function asStringArray(value: unknown) {
   return typeof value === 'string' && value.trim() ? [value] : [];
 }
 
+function parallelFieldLength(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.length;
+  }
+
+  return typeof value === 'string' ? 1 : 0;
+}
+
+/** Keeps empty slots so parallel document/link fields stay index-aligned. */
+function asParallelStringArray(value: unknown, length: number) {
+  const values = Array.isArray(value)
+    ? value.map((item) => (typeof item === 'string' ? item : ''))
+    : typeof value === 'string'
+      ? [value]
+      : [];
+
+  return Array.from({ length }, (_, index) => values[index] ?? '');
+}
+
 function asNumberArray(value: unknown) {
   return asStringArray(value)
     .map(Number)
@@ -349,26 +368,43 @@ function LinksSection({
 }) {
   const title = sectionTitle(section);
   const description = firstString(section.data['Links-Description']);
-  const linkTitles = asStringArray(section.data['Link-Title']);
-  const linkUrls = asStringArray(section.data['Link-Url']);
-  const linkDates = asStringArray(section.data['Link-Date']);
-  const linkImageStorageKeys = asStringArray(section.data['Link-Image-Storage-Key']);
+  const linkCount = Math.max(
+    parallelFieldLength(section.data['Link-Title']),
+    parallelFieldLength(section.data['Link-Url']),
+    parallelFieldLength(section.data['Link-Date']),
+    parallelFieldLength(section.data['Link-Image-Storage-Key']),
+  );
+  const linkTitles = asParallelStringArray(section.data['Link-Title'], linkCount);
+  const linkUrls = asParallelStringArray(section.data['Link-Url'], linkCount);
+  const linkDates = asParallelStringArray(section.data['Link-Date'], linkCount);
+  const linkImageStorageKeys = asParallelStringArray(
+    section.data['Link-Image-Storage-Key'],
+    linkCount,
+  );
 
   return (
     <div id={sectionAnchor(section)} className="contentsection">
       <h1 className="contentheading">{title}</h1>
       {description ? <RichTextValue value={description} /> : null}
       <div className="articlelist">
-        {linkTitles.map((linkTitle, index) => {
-          const href = linkUrls[index] || '#';
-          const imageStorageKey = linkImageStorageKeys[index] ?? '';
+        {linkTitles.flatMap((linkTitle, index) => {
+          const trimmedTitle = linkTitle.trim();
+          if (!trimmedTitle) {
+            return [];
+          }
+
+          const href = linkUrls[index]?.trim() || '#';
+          const imageStorageKey = linkImageStorageKeys[index]?.trim() ?? '';
           const domain = href === '#'
             ? ''
             : new URL(href.startsWith('http') ? href : `https://${href}`).hostname.replace(/^www\./, '');
-          const publicationLine = formatNewsMilestonePublicationLine(linkDates[index] ?? '', domain);
+          const publicationLine = formatNewsMilestonePublicationLine(
+            linkDates[index]?.trim() ?? '',
+            domain,
+          );
 
-          return (
-            <div className="articleitem" key={`${linkTitle}-${index}`}>
+          return [
+            <div className="articleitem" key={`${trimmedTitle}-${index}`}>
               <a href={href} target="_blank" rel="noreferrer" className="pagecard articlecard w-inline-block">
                 <div className="articlethumbnail">
                   <img
@@ -379,12 +415,12 @@ function LinksSection({
                   />
                 </div>
                 <div className="articlecontent">
-                  <div className="articletitle">{linkTitle}</div>
+                  <div className="articletitle">{trimmedTitle}</div>
                   {publicationLine ? <div className="articledomain">{publicationLine}</div> : null}
                 </div>
               </a>
-            </div>
-          );
+            </div>,
+          ];
         })}
       </div>
     </div>
@@ -402,23 +438,40 @@ function DocumentsSection({
 }) {
   const title = sectionTitle(section);
   const description = firstString(section.data['Documents-Description']);
-  const documents = asStringArray(section.data['Document-Title']);
-  const documentStorageKeys = asStringArray(section.data['Document-Storage-Key']);
-  const documentTags = asStringArray(section.data['Document-Tag']);
-  const documentUpdatedAts = asStringArray(section.data['Document-Updated-At']);
+  const documentCount = Math.max(
+    parallelFieldLength(section.data['Document-Title']),
+    parallelFieldLength(section.data['Document-Storage-Key']),
+    parallelFieldLength(section.data['Document-Tag']),
+    parallelFieldLength(section.data['Document-Updated-At']),
+  );
+  const documents = asParallelStringArray(section.data['Document-Title'], documentCount);
+  const documentStorageKeys = asParallelStringArray(
+    section.data['Document-Storage-Key'],
+    documentCount,
+  );
+  const documentTags = asParallelStringArray(section.data['Document-Tag'], documentCount);
+  const documentUpdatedAts = asParallelStringArray(
+    section.data['Document-Updated-At'],
+    documentCount,
+  );
   const tagOrder = asStringArray(section.data['Documents-Tag']);
-  const documentItems = documents.map((documentTitle, index) => {
-    const storageKey = documentStorageKeys[index] ?? '';
+  const documentItems = documents.flatMap((documentTitle, index) => {
+    const trimmedTitle = documentTitle.trim();
+    if (!trimmedTitle) {
+      return [];
+    }
+
+    const storageKey = documentStorageKeys[index]?.trim() ?? '';
     const tag = documentTags[index]?.trim() ?? '';
     const updatedAt = documentUpdatedAts[index]?.trim() ?? '';
 
-    return {
-      title: documentTitle,
+    return [{
+      title: trimmedTitle,
       url: assetUrls[storageKey] ?? '',
       fileType: storageKey.toLowerCase().endsWith('.docx') ? 'docx' as const : 'pdf' as const,
       tag: tag.length > 0 ? tag : null,
       updatedAt: updatedAt.length > 0 ? updatedAt : null,
-    };
+    }];
   });
 
   return (

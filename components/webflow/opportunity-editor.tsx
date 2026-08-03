@@ -102,6 +102,8 @@ type DocumentTagItem = {
 
 type DocumentItem = {
   id: number;
+  title: string;
+  storageKey: string;
   tagId: number | null;
   updatedAt: string;
 };
@@ -696,6 +698,10 @@ function UploadButton({
   }, [assetKind, initialStorageKey, sectionAssetUrls, storageKey]);
 
   const handleChange = async (file: File) => {
+    const previousStorageKey = storageKey;
+    const previousPreviewType = previewType;
+    const previousPreviewSrc = previewSrc;
+
     if (file.type.startsWith('image/')) {
       setPreviewType('image');
       setPreviewSrc(URL.createObjectURL(file));
@@ -723,6 +729,9 @@ function UploadButton({
       return;
     }
 
+    // Upload failed — don't leave a fake "uploaded" document/image preview.
+    setPreviewType(previousStorageKey ? previousPreviewType : '');
+    setPreviewSrc(previousStorageKey ? previousPreviewSrc : '');
     onError(result.message);
   };
 
@@ -742,9 +751,9 @@ function UploadButton({
           <UploadIcon />
         )}
       </button>
-      {storageKey ? (
-        <input name={name} type="hidden" value={storageKey} readOnly />
-      ) : null}
+      {/* Always emit the field so parallel document/link arrays stay index-aligned
+          even when a row has no file yet. */}
+      <input name={name} type="hidden" value={storageKey} readOnly />
       <input
         ref={inputRef}
         type="file"
@@ -944,6 +953,8 @@ function DocumentsDrawer({
 
     return {
       id: index + 1,
+      title: documentTitles[index] ?? '',
+      storageKey: documentStorageKeys[index] ?? '',
       tagId: matchedTag?.id ?? null,
       updatedAt: savedDocumentUpdatedAts[index] ?? '',
     };
@@ -955,6 +966,13 @@ function DocumentsDrawer({
   const [items, setItems] = useState<DocumentItem[]>(initialItems);
   const [nextId, setNextId] = useState(initialItems.length + 1);
   const [draggedId, setDraggedId] = useState<number | null>(null);
+
+  const updateItem = (id: number, patch: Partial<Omit<DocumentItem, 'id'>>) => {
+    setItems((current) =>
+      current.map((document) => (document.id === id ? { ...document, ...patch } : document)),
+    );
+    onDirty();
+  };
 
   const namedTags = tags.filter((tag) => tag.name.trim().length > 0);
 
@@ -1047,7 +1065,7 @@ function DocumentsDrawer({
         </div>
       </div>
 
-      {items.map((item, index) => {
+      {items.map((item) => {
         const selectedTag = tags.find((tag) => tag.id === item.tagId);
         const selectedTagName =
           selectedTag && selectedTag.name.trim().length > 0 ? selectedTag.name.trim() : '';
@@ -1080,19 +1098,15 @@ function DocumentsDrawer({
                     name="Document-Storage-Key"
                     accept="application/pdf,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     assetKind="document"
-                    initialStorageKey={documentStorageKeys[index] ?? ''}
+                    initialStorageKey={item.storageKey}
                     slug={uploadSlug}
                     onDirty={onDirty}
                     onError={onUploadError}
-                    onUploaded={() => {
-                      const uploadedAt = new Date().toISOString();
-                      setItems((current) =>
-                        current.map((document) =>
-                          document.id === item.id
-                            ? { ...document, updatedAt: uploadedAt }
-                            : document,
-                        ),
-                      );
+                    onUploaded={(storageKey) => {
+                      updateItem(item.id, {
+                        storageKey,
+                        updatedAt: new Date().toISOString(),
+                      });
                     }}
                   />
                   <input
@@ -1102,8 +1116,8 @@ function DocumentsDrawer({
                     data-name="Document Title"
                     placeholder="Document Title"
                     type="text"
-                    defaultValue={documentTitles[index] ?? ''}
-                    onChange={onDirty}
+                    value={item.title}
+                    onChange={(event) => updateItem(item.id, { title: event.currentTarget.value })}
                   />
                   <select
                     className="formfields w-input"
@@ -1116,14 +1130,7 @@ function DocumentsDrawer({
                       const nextName = event.currentTarget.value;
                       const matchedTag =
                         tags.find((tag) => tag.name.trim() === nextName) ?? null;
-                      setItems((current) =>
-                        current.map((document) =>
-                          document.id === item.id
-                            ? { ...document, tagId: matchedTag?.id ?? null }
-                            : document,
-                        ),
-                      );
-                      onDirty();
+                      updateItem(item.id, { tagId: matchedTag?.id ?? null });
                     }}
                   >
                     <option value="">{namedTags.length === 0 ? 'Add tags above' : 'No tag'}</option>
@@ -1157,7 +1164,10 @@ function DocumentsDrawer({
         type="button"
         className="contentsettings-toggle rounded"
         onClick={() => {
-          setItems((current) => [...current, { id: nextId, tagId: null, updatedAt: '' }]);
+          setItems((current) => [
+            ...current,
+            { id: nextId, title: '', storageKey: '', tagId: null, updatedAt: '' },
+          ]);
           setNextId((current) => current + 1);
           onDirty();
         }}

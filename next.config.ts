@@ -1,8 +1,8 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  // Pitch decks and term sheets regularly exceed Next's default 1MB
-  // Server Action body limit. Keep this aligned with realistic SPV docs.
+  // Opportunity assets upload directly to Supabase via signed URLs, so this
+  // limit mainly covers other Server Action payloads. Keep some headroom.
   experimental: {
     serverActions: {
       bodySizeLimit: '25mb',

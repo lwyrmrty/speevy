@@ -125,6 +125,62 @@ function safeFileName(name: string) {
     .replace(/^-+|-+$/g, '');
 }
 
+function resolveDocumentContentType(file: File) {
+  if (documentAssetMimeTypes.includes(file.type)) {
+    return file.type;
+  }
+
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith('.pdf')) {
+    return 'application/pdf';
+  }
+  if (lowerName.endsWith('.docx')) {
+    return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+
+  return null;
+}
+
+function asSavedStringArray(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map((item) => (typeof item === 'string' ? item : ''));
+  }
+
+  return typeof value === 'string' ? [value] : [];
+}
+
+/**
+ * Keep document parallel fields index-aligned. Older editor saves omitted
+ * empty Document-Storage-Key inputs, which shifted later files onto earlier titles.
+ */
+function normalizeDocumentsSectionData(data: Record<string, unknown>) {
+  const titles = asSavedStringArray(data['Document-Title']);
+  if (titles.length === 0) {
+    return data;
+  }
+
+  const padToTitles = (value: unknown) => {
+    const values = asSavedStringArray(value);
+    return titles.map((_, index) => values[index] ?? '');
+  };
+
+  return {
+    ...data,
+    'Document-Title': titles,
+    'Document-Storage-Key': padToTitles(data['Document-Storage-Key']),
+    'Document-Tag': padToTitles(data['Document-Tag']),
+    'Document-Updated-At': padToTitles(data['Document-Updated-At']),
+  };
+}
+
+function normalizeSectionData(type: string, data: Record<string, unknown>) {
+  if (type === 'documents') {
+    return normalizeDocumentsSectionData(data);
+  }
+
+  return data;
+}
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -199,10 +255,10 @@ export async function uploadOpportunityAsset(
   }
 
   const isDocumentUpload = kind.data === 'document';
-  const isDocumentFile = documentAssetMimeTypes.includes(file.type);
+  const documentContentType = isDocumentUpload ? resolveDocumentContentType(file) : null;
   const isImage = file.type.startsWith('image/');
 
-  if (isDocumentUpload ? !isDocumentFile : !isImage) {
+  if (isDocumentUpload ? !documentContentType : !isImage) {
     return {
       status: 'error',
       message: isDocumentUpload
@@ -221,7 +277,7 @@ export async function uploadOpportunityAsset(
   const { error: uploadError } = await supabase.storage
     .from(opportunityAssetsBucket)
     .upload(storageKey, file, {
-      contentType: file.type,
+      contentType: documentContentType ?? file.type,
       upsert: true,
     });
 
@@ -389,7 +445,7 @@ export async function saveOpportunityDraft(
           opportunity_id: opportunity.id,
           type: section.type,
           position: section.position,
-          data: section.data,
+          data: normalizeSectionData(section.type, section.data),
           updated_at: savedAt,
         })),
       );

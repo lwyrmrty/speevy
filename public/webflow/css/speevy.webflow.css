@@ -1408,6 +1408,16 @@ strong {
   font-weight: 600;
 }
 
+.richcontent a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.richcontent a:hover {
+  opacity: 0.8;
+}
+
 .richcontent img,
 .richcontent table,
 .richcontent iframe,
@@ -3134,6 +3144,14 @@ button.documentsfolder-row {
 .textdoc-content-inner li,
 .textdoc-content .ProseMirror li {
   margin-bottom: 6px;
+}
+
+.textdoc-content-inner a,
+.textdoc-content .ProseMirror a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
 
 .textdoc-content-inner > :last-child,

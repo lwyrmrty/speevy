@@ -13,3 +13,4 @@ coverage
 
 drizzle
 supabase/.temp
+.pnpm-store/

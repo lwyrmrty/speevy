@@ -39,13 +39,35 @@ type SectionRow = {
   data: Record<string, unknown>;
 };
 
+type TiptapMark = {
+  type?: string;
+  attrs?: Record<string, unknown>;
+};
+
 type TiptapNode = {
   type?: string;
   text?: string;
   attrs?: Record<string, unknown>;
-  marks?: { type?: string }[];
+  marks?: TiptapMark[];
   content?: TiptapNode[];
 };
+
+function safeExternalHref(value: unknown) {
+  if (typeof value !== 'string') return null;
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
 
 const defaultThumbnail = '/webflow/images/cyberwallpaper.webp';
 const defaultLogo = '/webflow/images/shield.svg';
@@ -296,10 +318,26 @@ function sectionAnchor(section: SectionRow) {
 function renderTiptapNode(node: TiptapNode, index = 0): React.ReactNode {
   if (node.type === 'text') {
     const text = node.text ?? '';
-    return (node.marks ?? []).reduce<React.ReactNode>((children, mark) => {
-      if (mark.type === 'bold') return <strong key={`${index}-bold`}>{children}</strong>;
-      if (mark.type === 'italic') return <em key={`${index}-italic`}>{children}</em>;
-      if (mark.type === 'underline') return <u key={`${index}-underline`}>{children}</u>;
+    return (node.marks ?? []).reduce<React.ReactNode>((children, mark, markIndex) => {
+      if (mark.type === 'bold') return <strong key={`${index}-bold-${markIndex}`}>{children}</strong>;
+      if (mark.type === 'italic') return <em key={`${index}-italic-${markIndex}`}>{children}</em>;
+      if (mark.type === 'underline') {
+        return <u key={`${index}-underline-${markIndex}`}>{children}</u>;
+      }
+      if (mark.type === 'link') {
+        const href = safeExternalHref(mark.attrs?.href);
+        if (!href) return children;
+        return (
+          <a
+            key={`${index}-link-${markIndex}`}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {children}
+          </a>
+        );
+      }
       return children;
     }, text);
   }

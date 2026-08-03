@@ -1,7 +1,8 @@
 'use client';
 
+import Link from '@tiptap/extension-link';
 import Underline from '@tiptap/extension-underline';
-import { EditorContent, useEditor } from '@tiptap/react';
+import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useRouter } from 'next/navigation';
 import {
@@ -520,6 +521,60 @@ function stringValues(value: unknown) {
   return typeof value === 'string' ? [value] : [];
 }
 
+const richTextLinkExtension = Link.configure({
+  openOnClick: false,
+  autolink: true,
+  linkOnPaste: true,
+  defaultProtocol: 'https',
+  HTMLAttributes: {
+    target: '_blank',
+    rel: 'noopener noreferrer',
+  },
+});
+
+const richTextExtensions = [StarterKit, Underline, richTextLinkExtension];
+
+function normalizeEditorHref(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  const withProtocol = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+
+  try {
+    const url = new URL(withProtocol);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return '';
+    }
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function toggleEditorLink(editor: Editor | null) {
+  if (!editor) return;
+
+  if (editor.isActive('link')) {
+    editor.chain().focus().extendMarkRange('link').unsetLink().run();
+    return;
+  }
+
+  const previous = editor.getAttributes('link').href;
+  const previousHref = typeof previous === 'string' ? previous : '';
+  const nextValue = window.prompt('Enter link URL', previousHref || 'https://');
+  if (nextValue === null) return;
+
+  const href = normalizeEditorHref(nextValue);
+  if (!href) {
+    editor.chain().focus().extendMarkRange('link').unsetLink().run();
+    return;
+  }
+
+  editor.chain().focus().extendMarkRange('link').setLink({ href }).run();
+}
+
 function TiptapDescriptionField({
   name,
   initialValue,
@@ -532,7 +587,7 @@ function TiptapDescriptionField({
   const normalizedInitialValue = storedRichTextValue(initialValue);
   const [bodyJson, setBodyJson] = useState(normalizedInitialValue);
   const editor = useEditor({
-    extensions: [StarterKit, Underline],
+    extensions: richTextExtensions,
     content: parseRichTextBody(normalizedInitialValue),
     editorProps: {
       attributes: {
@@ -564,6 +619,12 @@ function TiptapDescriptionField({
       icon: 'https://cdn.prod.website-files.com/6904240f9360489fd59ec0b9/691bdd0798736d065bc84222_underline.svg',
       active: editor?.isActive('underline') ?? false,
       onClick: () => editor?.chain().focus().toggleUnderline().run(),
+    },
+    {
+      label: 'Link',
+      icon: '/webflow/images/link-alt.svg',
+      active: editor?.isActive('link') ?? false,
+      onClick: () => toggleEditorLink(editor),
     },
     'divider' as const,
     {
@@ -1624,7 +1685,7 @@ function RichTextDrawer({ initialData }: { initialData?: Record<string, unknown>
     : '';
   const [bodyJson, setBodyJson] = useState(initialBodyJson);
   const editor = useEditor({
-    extensions: [StarterKit, Underline],
+    extensions: richTextExtensions,
     content: parseRichTextBody(initialBodyJson),
     editorProps: {
       attributes: {
@@ -1655,6 +1716,12 @@ function RichTextDrawer({ initialData }: { initialData?: Record<string, unknown>
       icon: 'https://cdn.prod.website-files.com/6904240f9360489fd59ec0b9/691bdd0798736d065bc84222_underline.svg',
       active: editor?.isActive('underline') ?? false,
       onClick: () => editor?.chain().focus().toggleUnderline().run(),
+    },
+    {
+      label: 'Link',
+      icon: '/webflow/images/link-alt.svg',
+      active: editor?.isActive('link') ?? false,
+      onClick: () => toggleEditorLink(editor),
     },
     'divider' as const,
     {

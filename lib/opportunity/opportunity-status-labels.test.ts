@@ -4,8 +4,22 @@ import { describe, it } from 'node:test';
 import {
   formatComingSoonListingMessage,
   formatStatusChangeListingMessage,
+  isLpNewOpportunityBroadcastStatus,
   shouldNotifyComingSoonFlip,
 } from '@/lib/opportunity/opportunity-status-labels';
+
+describe('isLpNewOpportunityBroadcastStatus', () => {
+  it('allows shareable first-publish statuses', () => {
+    assert.equal(isLpNewOpportunityBroadcastStatus('potential'), true);
+    assert.equal(isLpNewOpportunityBroadcastStatus('upcoming'), true);
+    assert.equal(isLpNewOpportunityBroadcastStatus('active'), true);
+  });
+
+  it('never announces draft or closed', () => {
+    assert.equal(isLpNewOpportunityBroadcastStatus('draft'), false);
+    assert.equal(isLpNewOpportunityBroadcastStatus('closed'), false);
+  });
+});
 
 describe('formatComingSoonListingMessage', () => {
   it('uses the agreed Coming Soon listing copy', () => {

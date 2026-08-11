@@ -16,6 +16,7 @@ import {
   shouldIncludeLpForNewOpportunityBroadcast,
 } from '@/lib/opportunity/broadcast-recipient-selection';
 import { buildOpportunityEmailDetails } from '@/lib/opportunity/opportunity-email-context';
+import { isLpNewOpportunityBroadcastStatus } from '@/lib/opportunity/opportunity-status-labels';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
 function deriveFirstName(fullName: string | null, email: string) {
@@ -39,6 +40,13 @@ export async function notifyMatchingLpsOfNewOpportunity(input: {
   minimumInvestmentCents: number | string | null;
   publishedAt: string;
 }): Promise<void> {
+  if (!isLpNewOpportunityBroadcastStatus(input.opportunityStatus)) {
+    console.info(
+      `New opportunity emails skipped for ${input.opportunitySlug}: status ${input.opportunityStatus} is not announceable (draft/closed never blast).`,
+    );
+    return;
+  }
+
   if (!hasLoopsLpMatchingOpportunityEnv()) {
     console.error(
       `New opportunity emails skipped for ${input.opportunitySlug}: LOOPS_TEMPLATE_LP_MATCHING_OPPORTUNITY (or LOOPS_API_KEY) is not configured.`,

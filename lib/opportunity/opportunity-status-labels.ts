@@ -26,6 +26,23 @@ export function isLpBroadcastStatusChange(status: string): status is Opportunity
   return lpBroadcastStatusChanges.has(status as OpportunityStatus);
 }
 
+/** Statuses eligible for the first-publish "new opportunity" LP email blast. */
+const lpNewOpportunityBroadcastStatuses = new Set<OpportunityStatus>([
+  'potential',
+  'upcoming',
+  'active',
+]);
+
+/**
+ * True when first leaving unpublished state should email LPs about a new deal.
+ * Draft and closed are never announced this way.
+ */
+export function isLpNewOpportunityBroadcastStatus(
+  status: string,
+): status is OpportunityStatus {
+  return lpNewOpportunityBroadcastStatuses.has(status as OpportunityStatus);
+}
+
 export function statusChangeKind(newStatus: string) {
   if (newStatus in opportunityStatusLabels) {
     return newStatus;

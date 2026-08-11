@@ -8,6 +8,7 @@ import {
 } from '@/app/account/nda/actions';
 import { GlanceChatWidget } from '@/components/glance-chat-widget';
 import { DocumentViewerDrawer } from '@/components/webflow/document-viewer-drawer';
+import { MediaGallery } from '@/components/webflow/media-gallery';
 import {
   OpportunityEngagementProvider,
   OpportunityFollowSection,
@@ -465,6 +466,72 @@ function LinksSection({
   );
 }
 
+function MediaSection({
+  section,
+  assetUrls,
+}: {
+  section: SectionRow;
+  assetUrls: Record<string, string>;
+}) {
+  const title = sectionTitle(section);
+  const description = firstString(section.data['Media-Description']);
+  const layoutRaw = Number(firstString(section.data['Media-Layout']));
+  const storageKeys = asParallelStringArray(
+    section.data['Media-Storage-Key'],
+    Math.max(
+      parallelFieldLength(section.data['Media-Storage-Key']),
+      parallelFieldLength(section.data['Media-Caption']),
+      parallelFieldLength(section.data['Media-Item-Description']),
+      layoutRaw > 0 ? layoutRaw : 0,
+      1,
+    ),
+  );
+  const itemDescriptions = asParallelStringArray(
+    section.data['Media-Item-Description'],
+    storageKeys.length,
+  );
+  const captions = asParallelStringArray(section.data['Media-Caption'], storageKeys.length);
+  // Legacy editor saved photo titles in Media-Title (colliding with section title).
+  const legacyTitles = asParallelStringArray(section.data['Media-Title'], storageKeys.length + 1);
+
+  const images = storageKeys.flatMap((storageKey, index) => {
+    const trimmedKey = storageKey.trim();
+    if (!trimmedKey) return [];
+
+    const src = assetUrls[trimmedKey];
+    if (!src) return [];
+
+    const description = itemDescriptions[index]?.trim()
+      || captions[index]?.trim()
+      || (legacyTitles.length > storageKeys.length
+        ? legacyTitles[index + 1]?.trim() ?? ''
+        : '')
+      || '';
+
+    return [{ src, description }];
+  });
+
+  const layout = layoutRaw >= 1 && layoutRaw <= 6
+    ? layoutRaw
+    : Math.min(Math.max(images.length, 1), 6);
+
+  if (images.length === 0 && !description) {
+    return (
+      <div id={sectionAnchor(section)} className="contentsection">
+        <h1 className="contentheading">{title}</h1>
+      </div>
+    );
+  }
+
+  return (
+    <div id={sectionAnchor(section)} className="contentsection">
+      <h1 className="contentheading">{title}</h1>
+      {description ? <RichTextValue value={description} /> : null}
+      <MediaGallery images={images} layout={layout} />
+    </div>
+  );
+}
+
 function DocumentsSection({
   section,
   assetUrls,
@@ -698,6 +765,9 @@ function OpportunitySection({
 }) {
   if (section.type === 'richContent') return <RichTextSection section={section} />;
   if (section.type === 'links') return <LinksSection section={section} assetUrls={assetUrls} />;
+  if (section.type === 'media') {
+    return <MediaSection section={section} assetUrls={assetUrls} />;
+  }
   if (section.type === 'documents') {
     return <DocumentsSection section={section} assetUrls={assetUrls} watermarkEmail={watermarkEmail} />;
   }

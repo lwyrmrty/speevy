@@ -94,6 +94,27 @@ type NewsLinkItem = {
   imageStorageKey: string;
 };
 
+type MediaLayoutCount = 1 | 2 | 3 | 4 | 5 | 6;
+
+type MediaItem = {
+  id: number;
+  description: string;
+  storageKey: string;
+};
+
+const MEDIA_LAYOUT_OPTIONS: {
+  count: MediaLayoutCount;
+  label: string;
+  rows: number[];
+}[] = [
+  { count: 1, label: '1 image', rows: [1] },
+  { count: 2, label: '2 images', rows: [2] },
+  { count: 3, label: '3 images', rows: [1, 2] },
+  { count: 4, label: '4 images', rows: [2, 2] },
+  { count: 5, label: '5 images', rows: [2, 1, 2] },
+  { count: 6, label: '6 images', rows: [3, 3] },
+];
+
 type DocumentTagItem = {
   id: number;
   name: string;
@@ -1619,6 +1640,33 @@ function PeopleDrawer({
   );
 }
 
+function parseMediaLayoutCount(value: unknown): MediaLayoutCount | null {
+  const raw = typeof value === 'string' ? value : Array.isArray(value) ? value[0] : null;
+  const count = Number(raw);
+  if (count === 1 || count === 2 || count === 3 || count === 4 || count === 5 || count === 6) {
+    return count;
+  }
+  return null;
+}
+
+function MediaLayoutPreview({ rows }: { rows: number[] }) {
+  return (
+    <div className="speevy-media-layout-preview" aria-hidden="true">
+      {rows.map((columns, rowIndex) => (
+        <div
+          key={`row-${rowIndex}`}
+          className="speevy-media-layout-preview-row"
+          style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+        >
+          {Array.from({ length: columns }, (_, cellIndex) => (
+            <span key={`cell-${rowIndex}-${cellIndex}`} className="speevy-media-layout-preview-cell" />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function MediaDrawer({
   initialData,
   uploadSlug,
@@ -1630,38 +1678,153 @@ function MediaDrawer({
   onDirty: () => void;
   onUploadError: (message: string) => void;
 }) {
-  const mediaStorageKey = typeof initialData?.['Media-Storage-Key'] === 'string'
-    ? initialData['Media-Storage-Key']
-    : stringValues(initialData?.['Media-Storage-Key'])[0] ?? '';
+  const storageKeys = stringValues(initialData?.['Media-Storage-Key']);
+  const descriptions = stringValues(initialData?.['Media-Item-Description']);
+  const captions = stringValues(initialData?.['Media-Caption']);
+  // Legacy single-item editor stored the photo title in Media-Title, colliding
+  // with the section title field. Prefer Media-Item-Description, then caption.
+  const legacyTitleValues = stringValues(initialData?.['Media-Title']);
+  const sectionTitle = typeof initialData?.['Media-Title'] === 'string'
+    ? initialData['Media-Title']
+    : legacyTitleValues.length > storageKeys.length
+      ? legacyTitleValues[0] ?? ''
+      : legacyTitleValues.length === 1 && storageKeys.length <= 1
+        ? legacyTitleValues[0] ?? ''
+        : '';
+  const legacyPhotoCopy = captions.length > 0
+    ? captions
+    : legacyTitleValues.length > storageKeys.length
+      ? legacyTitleValues.slice(1)
+      : legacyTitleValues.length === storageKeys.length && storageKeys.length > 1
+        ? legacyTitleValues
+        : storageKeys.length === 1 && legacyTitleValues.length === 1 && !sectionTitle
+          ? legacyTitleValues
+          : [];
+
+  const inferredCount = Math.min(
+    6,
+    Math.max(storageKeys.length, legacyPhotoCopy.length, descriptions.length, 1),
+  ) as MediaLayoutCount;
+  const savedLayout = parseMediaLayoutCount(initialData?.['Media-Layout']);
+  // Never open the editor with fewer slots than images already saved.
+  const initialLayout = (
+    savedLayout && savedLayout >= inferredCount ? savedLayout : inferredCount
+  ) as MediaLayoutCount;
+
+  const initialItems: MediaItem[] = Array.from({ length: initialLayout }, (_, index) => ({
+    id: index + 1,
+    description: descriptions[index] || legacyPhotoCopy[index] || '',
+    storageKey: storageKeys[index] ?? '',
+  }));
+
+  const [layout, setLayout] = useState<MediaLayoutCount>(initialLayout);
+  const [items, setItems] = useState<MediaItem[]>(initialItems);
+  const [nextId, setNextId] = useState(initialItems.length + 1);
+  const [draggedId, setDraggedId] = useState<number | null>(null);
+
+  const sectionIntroData = {
+    ...initialData,
+    'Media-Title': sectionTitle,
+  };
+
+  const updateItem = (id: number, patch: Partial<Omit<MediaItem, 'id'>>) => {
+    setItems((current) =>
+      current.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
+    onDirty();
+  };
+
+  const setLayoutCount = (count: MediaLayoutCount) => {
+    setLayout(count);
+    setItems((current) => {
+      if (current.length === count) return current;
+      if (current.length > count) return current.slice(0, count);
+
+      const additions = Array.from({ length: count - current.length }, (_, index) => ({
+        id: nextId + index,
+        description: '',
+        storageKey: '',
+      }));
+      return [...current, ...additions];
+    });
+    setNextId((currentNext) => currentNext + Math.max(0, count - items.length));
+    onDirty();
+  };
 
   return (
     <div content-type="media" className="contenttype-block">
-      <SectionIntroFields prefix="Media" initialData={initialData} onDirty={onDirty} />
-      <div className="rowcard withdrag">
-        <div className="alignrow aligncenter stretch middle">
-          <DragHandle />
-          <div className="prompt-block">
-            <div className="alignrow aligncenter">
-              <UploadButton
-                label="Upload media"
-                name="Media-Storage-Key"
-                initialStorageKey={mediaStorageKey}
-                slug={uploadSlug}
-                onDirty={onDirty}
-                onError={onUploadError}
-              />
-              <input
-                className="formfields w-input"
-                maxLength={256}
-                name="Media-Title"
-                data-name="Media Title"
-                placeholder="Title"
-                type="text"
-              />
+      <SectionIntroFields prefix="Media" initialData={sectionIntroData} onDirty={onDirty} />
+
+      <div className="formfields-block spacetop">
+        <div className="fieldlabel">Grid layout</div>
+        <input type="hidden" name="Media-Layout" value={String(layout)} readOnly />
+        <div className="speevy-media-layout-options" role="radiogroup" aria-label="Media grid layout">
+          {MEDIA_LAYOUT_OPTIONS.map((option) => {
+            const selected = layout === option.count;
+            return (
+              <button
+                key={option.count}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                className={`speevy-media-layout-option${selected ? ' is-selected' : ''}`}
+                onClick={() => setLayoutCount(option.count)}
+              >
+                <MediaLayoutPreview rows={option.rows} />
+                <div className="speevy-media-layout-option-label">{option.label}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {items.map((item, index) => (
+        <div
+          key={item.id}
+          className="rowcard withdrag"
+          draggable
+          onDragStart={(event) => {
+            startRowDrag(event);
+            setDraggedId(item.id);
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            if (draggedId !== null) {
+              setItems((current) => reorderById(current, draggedId, item.id));
+              setDraggedId(null);
+              onDirty();
+            }
+          }}
+        >
+          <div className="alignrow aligncenter stretch middle">
+            <DragHandle />
+            <div className="prompt-block">
+              <div className="alignrow aligncenter">
+                <UploadButton
+                  label={`Upload media ${index + 1}`}
+                  name="Media-Storage-Key"
+                  initialStorageKey={item.storageKey}
+                  slug={uploadSlug}
+                  onDirty={onDirty}
+                  onError={onUploadError}
+                  onUploaded={(storageKey) => updateItem(item.id, { storageKey })}
+                />
+                <input
+                  className="formfields w-input"
+                  maxLength={500}
+                  name="Media-Item-Description"
+                  data-name="Media Item Description"
+                  placeholder="Description"
+                  type="text"
+                  value={item.description}
+                  onChange={(event) => updateItem(item.id, { description: event.currentTarget.value })}
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      ))}
     </div>
   );
 }

@@ -10,7 +10,10 @@ import {
   notifyLpsOfComingSoon,
   notifyLpsOfOpportunityStatusChange,
 } from '@/lib/opportunity/notify-status-change';
-import { shouldNotifyComingSoonFlip } from '@/lib/opportunity/opportunity-status-labels';
+import {
+  isLpNewOpportunityBroadcastStatus,
+  shouldNotifyComingSoonFlip,
+} from '@/lib/opportunity/opportunity-status-labels';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { createSupabaseServerClient } from '@/lib/supabase/server';
 
@@ -203,9 +206,49 @@ function normalizeDocumentsSectionData(data: Record<string, unknown>) {
   };
 }
 
+/**
+ * Keep media parallel fields index-aligned to the selected grid layout count.
+ */
+function normalizeMediaSectionData(data: Record<string, unknown>) {
+  const layoutRaw = Number(
+    typeof data['Media-Layout'] === 'string'
+      ? data['Media-Layout']
+      : Array.isArray(data['Media-Layout'])
+        ? data['Media-Layout'][0]
+        : 0,
+  );
+  const layout = layoutRaw >= 1 && layoutRaw <= 6 ? layoutRaw : 0;
+  const storageKeys = asSavedStringArray(data['Media-Storage-Key']);
+  const descriptions = asSavedStringArray(data['Media-Item-Description']);
+  const count = Math.max(layout, storageKeys.length, descriptions.length);
+
+  if (count === 0) {
+    return data;
+  }
+
+  const padToCount = (value: unknown) => {
+    const values = asSavedStringArray(value);
+    return Array.from({ length: count }, (_, index) => values[index] ?? '');
+  };
+
+  const nextData = { ...data };
+  delete nextData['Media-Caption'];
+
+  return {
+    ...nextData,
+    'Media-Layout': String(layout || count),
+    'Media-Storage-Key': padToCount(data['Media-Storage-Key']),
+    'Media-Item-Description': padToCount(data['Media-Item-Description']),
+  };
+}
+
 function normalizeSectionData(type: string, data: Record<string, unknown>) {
   if (type === 'documents') {
     return normalizeDocumentsSectionData(data);
+  }
+
+  if (type === 'media') {
+    return normalizeMediaSectionData(data);
   }
 
   return data;
@@ -591,7 +634,10 @@ export async function saveOpportunityDraft(
   const previousComingSoon = existingOpportunity?.coming_soon === true;
   const newComingSoon = opportunityFields.coming_soon === true;
   const shouldNotifyStatusChange = previousStatus !== data.status;
-  const shouldNotifyNewOpportunity = data.status !== 'draft' && !existingOpportunity?.published_at;
+  // First-publish blast only for shareable statuses — never draft or closed.
+  const shouldNotifyNewOpportunity =
+    isLpNewOpportunityBroadcastStatus(data.status)
+    && !existingOpportunity?.published_at;
   // Coming Soon-only: false → true while already upcoming. If this save also
   // transitions into upcoming, the status-change email carries Coming Soon copy.
   const shouldNotifyComingSoon = shouldNotifyComingSoonFlip({

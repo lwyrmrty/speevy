@@ -50,6 +50,7 @@ describe('isLpBroadcastStatusChange', () => {
     assert.equal(isLpBroadcastStatusChange('upcoming'), true);
     assert.equal(isLpBroadcastStatusChange('closed'), false);
     assert.equal(isLpBroadcastStatusChange('potential'), false);
+    assert.equal(isLpBroadcastStatusChange('draft'), false);
   });
 });
 

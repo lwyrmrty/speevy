@@ -20,7 +20,7 @@ export async function POST(
 
   try {
     const pack = await buildOpportunityExportPack(auth.viewer);
-    return NextResponse.json({ url: pack.url });
+    return NextResponse.json({ url: pack.url, filename: pack.filename });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Export failed.';
     return NextResponse.json({ message }, { status: 500 });

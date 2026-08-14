@@ -76,13 +76,14 @@ export async function buildOpportunityExportPack(viewer: ExportViewer) {
     watermarkText,
   );
 
+  const packName = sanitizeExportFilename(viewer.title);
   const zip = new JSZip();
-  const root = zip.folder(`${viewer.slug}-export`);
+  const root = zip.folder(packName);
   if (!root) {
     throw new Error('Could not create export archive.');
   }
 
-  root.file(`${viewer.slug}-overview.pdf`, overviewPdf);
+  root.file(`${packName} Overview.pdf`, overviewPdf);
 
   const documentNames = new Set<string>();
   for (const document of documents) {
@@ -131,7 +132,8 @@ export async function buildOpportunityExportPack(viewer: ExportViewer) {
     throw new Error(bucketError);
   }
 
-  const storageKey = `exports/${viewer.opportunityId}/${Date.now()}.zip`;
+  const downloadName = `${packName}.zip`;
+  const storageKey = `exports/${viewer.opportunityId}/${Date.now()}-${viewer.slug}.zip`;
   const { error: uploadError } = await supabase.storage
     .from(opportunityAssetsBucket)
     .upload(storageKey, Buffer.from(zipBytes), {
@@ -145,7 +147,9 @@ export async function buildOpportunityExportPack(viewer: ExportViewer) {
 
   const { data: signed, error: signedError } = await supabase.storage
     .from(opportunityAssetsBucket)
-    .createSignedUrl(storageKey, 10 * 60);
+    .createSignedUrl(storageKey, 10 * 60, {
+      download: downloadName,
+    });
 
   if (signedError || !signed?.signedUrl) {
     throw new Error('Could not create a download link for the export.');
@@ -165,5 +169,5 @@ export async function buildOpportunityExportPack(viewer: ExportViewer) {
     },
   });
 
-  return { url: signed.signedUrl, storageKey };
+  return { url: signed.signedUrl, filename: downloadName, storageKey };
 }

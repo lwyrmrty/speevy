@@ -18,7 +18,7 @@
     "@react-stately/utils": "^3.12.1",
     "@react-types/overlays": "^3.10.0",
     "@react-types/shared": "^3.35.0",
-    "@sparticuz/chromium": "^149.0.0",
+    "@sparticuz/chromium-min": "149.0.0",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
     "@tailwindcss/typography": "^0.5.19",

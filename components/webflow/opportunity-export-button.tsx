@@ -32,7 +32,7 @@ export function OpportunityExportButton({
       const response = await fetch(`/api/opportunities/${encodeURIComponent(slug)}/export`, {
         method: 'POST',
       });
-      const payload = await response.json() as { url?: string; message?: string };
+      const payload = await response.json() as { url?: string; filename?: string; message?: string };
 
       if (!response.ok || !payload.url) {
         setStatus('error');
@@ -40,7 +40,22 @@ export function OpportunityExportButton({
         return;
       }
 
-      window.location.href = payload.url;
+      const fileResponse = await fetch(payload.url);
+      if (!fileResponse.ok) {
+        setStatus('error');
+        setMessage('Could not download the export.');
+        return;
+      }
+
+      const blob = await fileResponse.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = payload.filename || 'export.zip';
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
       setStatus('idle');
     } catch {
       setStatus('error');

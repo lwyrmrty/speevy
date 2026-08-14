@@ -689,3 +689,76 @@ export async function sendNdaSignedCopyEmail({
     throw new Error(message);
   }
 }
+
+function getInterestCrmEmailTemplateId() {
+  return process.env.LOOPS_TEMPLATE_INTEREST_CRM_EMAIL;
+}
+
+export function hasLoopsInterestCrmEmailEnv() {
+  return Boolean(getLoopsApiKey() && getInterestCrmEmailTemplateId());
+}
+
+export async function sendInterestCrmEmail({
+  email,
+  firstName,
+  confirmAmount,
+  opportunityTitle,
+  senderFirst,
+  messageHtml,
+  messageText,
+  idempotencyKey,
+}: {
+  email: string;
+  firstName: string;
+  confirmAmount: string;
+  opportunityTitle: string;
+  senderFirst: string;
+  messageHtml: string;
+  messageText: string;
+  idempotencyKey: string;
+}) {
+  const apiKey = getLoopsApiKey();
+  const transactionalId = getInterestCrmEmailTemplateId();
+
+  if (!apiKey || !transactionalId) {
+    throw new Error('Loops interest CRM email environment variables are not configured.');
+  }
+
+  const response = await fetch('https://app.loops.so/api/v1/transactional', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify({
+      transactionalId,
+      email,
+      dataVariables: {
+        firstName,
+        investorFirst: firstName,
+        confirmAmount,
+        opportunity: opportunityTitle,
+        opportunityTitle,
+        senderFirst,
+        messageHtml,
+        messageText,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    let message = `Loops transactional email failed with status ${response.status}.`;
+
+    try {
+      const body = await response.json();
+      if (typeof body?.message === 'string') {
+        message = body.message;
+      }
+    } catch {
+      // Keep the status-based message if Loops returns a non-JSON response.
+    }
+
+    throw new Error(message);
+  }
+}

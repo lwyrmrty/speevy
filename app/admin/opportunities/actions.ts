@@ -4,6 +4,11 @@ import { after } from 'next/server';
 import { z } from 'zod';
 
 import { INVESTOR_SECTORS } from '@/lib/investor-request';
+import {
+  ensureOpportunityAssetsBucket,
+  opportunityAssetMimeTypes,
+  opportunityAssetsBucket,
+} from '@/lib/opportunity/assets-bucket';
 import { notifyFollowersOfOpportunityUpdate } from '@/lib/opportunity/notify-followers-update';
 import { notifyMatchingLpsOfNewOpportunity } from '@/lib/opportunity/notify-sector-match';
 import {
@@ -19,16 +24,6 @@ import { createSupabaseServerClient } from '@/lib/supabase/server';
 
 const statusSchema = z.enum(['draft', 'potential', 'upcoming', 'active', 'closed']);
 const opportunityAssetKindSchema = z.enum(['thumbnail', 'logo', 'section', 'document']);
-const opportunityAssetsBucket = 'opportunity-assets';
-const opportunityAssetMimeTypes = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'image/svg+xml',
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-];
 const documentAssetMimeTypes = [
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -62,6 +57,7 @@ const saveOpportunitySchema = z.object({
   // References an nda_templates.id (Speevy NDA catalog). Required when NDA is on.
   ndaTemplateId: z.string().uuid().nullable().optional(),
   watermarkEnabled: z.boolean(),
+  exportEnabled: z.boolean(),
   passwordProtected: z.boolean(),
   password: z.string().optional(),
   thumbnailStorageKey: z.string().optional(),
@@ -281,33 +277,6 @@ async function uniqueOpportunitySlug(supabase: ReturnType<typeof createSupabaseA
     candidate = `${baseSlug}-${suffix}`;
     suffix += 1;
   }
-}
-
-async function ensureOpportunityAssetsBucket() {
-  const supabase = createSupabaseAdminClient();
-  const { data: buckets, error: listError } = await supabase.storage.listBuckets();
-
-  if (listError) {
-    return { supabase, error: listError.message };
-  }
-
-  if (buckets?.some((bucket) => bucket.name === opportunityAssetsBucket)) {
-    const { error: updateError } = await supabase.storage.updateBucket(opportunityAssetsBucket, {
-      public: false,
-      fileSizeLimit: '50MB',
-      allowedMimeTypes: opportunityAssetMimeTypes,
-    });
-
-    return { supabase, error: updateError?.message ?? null };
-  }
-
-  const { error: createError } = await supabase.storage.createBucket(opportunityAssetsBucket, {
-    public: false,
-    fileSizeLimit: '50MB',
-    allowedMimeTypes: opportunityAssetMimeTypes,
-  });
-
-  return { supabase, error: createError?.message ?? null };
 }
 
 const prepareOpportunityAssetUploadSchema = z.object({
@@ -543,6 +512,7 @@ export async function saveOpportunityDraft(
     nda_required: data.ndaRequired,
     nda_template_id: data.ndaRequired ? data.ndaTemplateId ?? null : null,
     watermark_enabled: data.watermarkEnabled,
+    export_enabled: data.exportEnabled,
     password_protected: data.passwordProtected,
     thumbnail_storage_key: data.thumbnailStorageKey || null,
     logo_storage_key: data.logoStorageKey || null,

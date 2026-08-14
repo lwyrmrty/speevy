@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '25mb',
     },
   },
+  serverExternalPackages: ['@sparticuz/chromium', 'puppeteer-core', 'sharp'],
 };
 
 export default nextConfig;

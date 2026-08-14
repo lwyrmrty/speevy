@@ -18,6 +18,7 @@
     "@react-stately/utils": "^3.12.1",
     "@react-types/overlays": "^3.10.0",
     "@react-types/shared": "^3.35.0",
+    "@sparticuz/chromium": "^149.0.0",
     "@supabase/ssr": "latest",
     "@supabase/supabase-js": "latest",
     "@tailwindcss/typography": "^0.5.19",
@@ -30,15 +31,19 @@
     "clsx": "^2.1.1",
     "drizzle-orm": "latest",
     "input-otp": "^1.4.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.511.0",
     "next": "15",
+    "pdf-lib": "^1.17.1",
     "postgres": "latest",
-    "react": "latest",
+    "puppeteer-core": "^25.6.0",
+    "react": "19.2.7",
     "react-aria": "^3.49.0",
     "react-aria-components": "^1.18.0",
-    "react-dom": "latest",
+    "react-dom": "19.2.7",
     "react-stately": "^3.47.0",
     "shadcn": "^4.8.2",
+    "sharp": "^0.35.3",
     "standardwebhooks": "^1.0.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
@@ -56,6 +61,6 @@
     "eslint-config-next": "latest",
     "postcss": "latest",
     "tailwindcss": "latest",
-    "typescript": "latest"
+    "typescript": "6.0.3"
   }
 }

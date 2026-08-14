@@ -36,6 +36,7 @@ export default async function EditOpportunityPage({
         nda_required,
         nda_template_id,
         watermark_enabled,
+        export_enabled,
         password_protected,
         thumbnail_storage_key,
         logo_storage_key
@@ -147,6 +148,7 @@ export default async function EditOpportunityPage({
           ndaRequired: opportunity.nda_required,
           ndaTemplateId: opportunity.nda_template_id,
           watermarkEnabled: opportunity.watermark_enabled,
+          exportEnabled: opportunity.export_enabled,
           passwordProtected: opportunity.password_protected,
           // The actual gate password (plaintext) so the admin can view/reveal it.
           password: accessPassword?.password ?? null,

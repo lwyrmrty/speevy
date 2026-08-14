@@ -6,6 +6,7 @@ import {
   type SignedNdaItem,
 } from '@/components/webflow/admin-investors-table';
 import { AdminInvestorsFallbackScript } from '@/components/webflow/admin-investors-fallback-script';
+import { AdminInvestorsSearch } from '@/components/webflow/admin-investors-search';
 import {
   AdminInvestorsStatusFilter,
   type InvestorStatusFilterValue,
@@ -32,6 +33,7 @@ type InvestorRow = {
   full_name: string | null;
   entity_name: string | null;
   status: LpStatus;
+  export_enabled: boolean;
   sectors_interested: unknown;
   investment_range_min_cents: number | null;
   investment_range_max_cents: number | null;
@@ -106,6 +108,21 @@ function parseStatusFilter(value: string | string[] | undefined): InvestorStatus
   return raw === 'insider' || raw === 'outsider' ? raw : 'all';
 }
 
+function parseSearchQuery(value: string | string[] | undefined): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return (raw ?? '').trim().slice(0, 80);
+}
+
+function investorSearchOrFilter(search: string): string | null {
+  const sanitized = search.replace(/[%_\\,"()]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!sanitized) {
+    return null;
+  }
+
+  const pattern = `%${sanitized}%`;
+  return `full_name.ilike."${pattern}",email.ilike."${pattern}",entity_name.ilike."${pattern}"`;
+}
+
 export default async function AdminInvestorsPage({
   searchParams,
 }: {
@@ -113,6 +130,7 @@ export default async function AdminInvestorsPage({
     investor?: string | string[];
     status?: string | string[];
     page?: string | string[];
+    q?: string | string[];
   }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : {};
@@ -120,6 +138,8 @@ export default async function AdminInvestorsPage({
     ? resolvedSearchParams.investor[0]
     : resolvedSearchParams.investor;
   const statusFilter = parseStatusFilter(resolvedSearchParams.status);
+  const searchQuery = parseSearchQuery(resolvedSearchParams.q);
+  const searchFilter = investorSearchOrFilter(searchQuery);
   const requestedPage = parsePageParam(resolvedSearchParams.page);
   const pageSize = DEFAULT_PAGE_SIZE;
   const supabase = createSupabaseAdminClient();
@@ -133,6 +153,10 @@ export default async function AdminInvestorsPage({
     investorsCountQuery = investorsCountQuery.eq('status', 'outsider');
   } else if (statusFilter === 'insider') {
     investorsCountQuery = investorsCountQuery.neq('status', 'outsider');
+  }
+
+  if (searchFilter) {
+    investorsCountQuery = investorsCountQuery.or(searchFilter);
   }
 
   const { count: investorCount } = await investorsCountQuery;
@@ -151,6 +175,7 @@ export default async function AdminInvestorsPage({
       full_name,
       entity_name,
       status,
+      export_enabled,
       sectors_interested,
       investment_range_min_cents,
       investment_range_max_cents,
@@ -163,6 +188,10 @@ export default async function AdminInvestorsPage({
     investorsQuery = investorsQuery.eq('status', 'outsider');
   } else if (statusFilter === 'insider') {
     investorsQuery = investorsQuery.neq('status', 'outsider');
+  }
+
+  if (searchFilter) {
+    investorsQuery = investorsQuery.or(searchFilter);
   }
 
   const { data: investorsData } = await investorsQuery
@@ -309,6 +338,7 @@ export default async function AdminInvestorsPage({
     fullName: investor.full_name,
     entityName: investor.entity_name,
     status: investor.status,
+    exportEnabled: investor.export_enabled,
     // "Insiders" are invited LPs; "outsiders" unlocked a password-protected
     // opportunity via a shared direct link.
     kind: investor.status === 'outsider' ? 'outsider' : 'insider',
@@ -339,6 +369,7 @@ export default async function AdminInvestorsPage({
             <div className="tableheader">
               <div className="pagetitle">Manage Investors</div>
               <div className="speevy-tableheader-actions">
+                <AdminInvestorsSearch value={searchQuery} />
                 <AdminInvestorsStatusFilter value={statusFilter} />
                 <CopyInvestorInviteLinkButton />
               </div>

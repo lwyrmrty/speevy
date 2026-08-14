@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+import { ensureOpportunityAssetsBucket } from '@/lib/opportunity/assets-bucket';
+
 export const lpProfilePictureBucket = 'opportunity-assets';
 
 export const lpProfilePictureMimeTypes = [
@@ -29,6 +31,12 @@ export function buildLpProfilePictureStorageKey(lpId: string, fileName: string) 
   return `lp-profiles/${lpId}/profile-${Date.now()}-${safeProfilePictureFileName(fileName)}`;
 }
 
+export function buildAdminProfilePictureStorageKey(profileId: string, fileName: string) {
+  return `admin-profiles/${profileId}/profile-${Date.now()}-${safeProfilePictureFileName(fileName)}`;
+}
+
+export const profilePictureMaxBytes = 10 * 1024 * 1024;
+
 export async function createLpProfilePictureSignedUrl(
   supabase: SupabaseClient,
   storageKey: string | null | undefined,
@@ -43,27 +51,6 @@ export async function createLpProfilePictureSignedUrl(
 }
 
 export async function ensureLpProfilePictureBucket(supabase: SupabaseClient) {
-  const { data: buckets, error: listError } = await supabase.storage.listBuckets();
-
-  if (listError) {
-    return listError.message;
-  }
-
-  if (buckets?.some((bucket) => bucket.name === lpProfilePictureBucket)) {
-    const { error: updateError } = await supabase.storage.updateBucket(lpProfilePictureBucket, {
-      public: false,
-      fileSizeLimit: '10MB',
-      allowedMimeTypes: [...lpProfilePictureMimeTypes],
-    });
-
-    return updateError?.message ?? null;
-  }
-
-  const { error: createError } = await supabase.storage.createBucket(lpProfilePictureBucket, {
-    public: false,
-    fileSizeLimit: '10MB',
-    allowedMimeTypes: [...lpProfilePictureMimeTypes],
-  });
-
-  return createError?.message ?? null;
+  const { error } = await ensureOpportunityAssetsBucket(supabase);
+  return error;
 }

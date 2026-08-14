@@ -9,6 +9,7 @@ import {
 import { GlanceChatWidget } from '@/components/glance-chat-widget';
 import { DocumentViewerDrawer } from '@/components/webflow/document-viewer-drawer';
 import { MediaGallery } from '@/components/webflow/media-gallery';
+import { OpportunityExportButton } from '@/components/webflow/opportunity-export-button';
 import {
   OpportunityEngagementProvider,
   OpportunityFollowSection,
@@ -791,7 +792,7 @@ export default async function OpportunityPreviewPage({
   const supabase = createSupabaseAdminClient();
 
   let isAdmin = false;
-  let lp: { id: string; status: string } | null = null;
+  let lp: { id: string; status: string; export_enabled: boolean } | null = null;
 
   if (user) {
     const { data: profile } = await supabase
@@ -802,7 +803,7 @@ export default async function OpportunityPreviewPage({
     isAdmin = profile?.role === 'admin';
     const { data: lpRow } = await supabase
       .from('lps')
-      .select('id, status')
+      .select('id, status, export_enabled')
       .eq('profile_id', user.id)
       .maybeSingle();
     lp = lpRow;
@@ -926,7 +927,9 @@ export default async function OpportunityPreviewPage({
         logo_storage_key,
         status,
         password_protected,
-        watermark_enabled
+        watermark_enabled,
+        export_enabled,
+        nda_required
       `,
     )
     .eq('slug', opportunityId)
@@ -1074,6 +1077,34 @@ export default async function OpportunityPreviewPage({
     href: `#${sectionAnchor(section)}`,
     label: sectionTitle(section),
   }));
+
+  let canExport = Boolean(opportunity.export_enabled);
+  if (canExport && !isAdmin) {
+    if (isApprovedLp) {
+      canExport = Boolean(lp?.export_enabled);
+      if (canExport && opportunity.nda_required && lp?.id) {
+        const { data: signedNda } = await supabase
+          .from('opportunity_ndas')
+          .select('id')
+          .eq('opportunity_id', opportunity.id)
+          .eq('lp_id', lp.id)
+          .eq('status', 'signed')
+          .maybeSingle();
+        canExport = Boolean(signedNda);
+      } else if (canExport && opportunity.nda_required) {
+        canExport = false;
+      }
+    } else if (isGuest && guestEmail) {
+      const { data: guestExport } = await supabase
+        .from('lps')
+        .select('export_enabled')
+        .eq('email', guestEmail)
+        .maybeSingle();
+      canExport = Boolean(guestExport?.export_enabled);
+    } else {
+      canExport = false;
+    }
+  }
 
   return (
     <>
@@ -1340,6 +1371,15 @@ export default async function OpportunityPreviewPage({
                     )}
                   </div>
                   <OpportunityReserveInterestSection />
+                  {canExport ? (
+                    <div className="export-info-slot">
+                      <OpportunityExportButton
+                        slug={opportunity.slug}
+                        className="dropdownbutton action"
+                        showIcon
+                      />
+                    </div>
+                  ) : null}
                 </div>
                 {!isGuest && isApprovedLp ? <OpportunityFollowSection /> : null}
               </div>

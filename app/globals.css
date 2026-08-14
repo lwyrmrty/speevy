@@ -224,8 +224,21 @@ body {
   gap: 10px;
 }
 
+.speevy-tableheader-actions .searchfield {
+  width: 200px;
+  height: 40px;
+}
+
+.speevy-tableheader-actions .searchform-block[data-pending="true"] {
+  opacity: 0.7;
+}
+
 @media screen and (max-width: 767px) {
   .speevy-tableheader-actions {
+    width: 100%;
+  }
+
+  .speevy-tableheader-actions .searchfield {
     width: 100%;
   }
 

@@ -82,6 +82,19 @@ export const interestStatus = pgEnum('interest_status', [
   'withdrawn',
 ]);
 
+export const interestPipelineStatus = pgEnum('interest_pipeline_status', [
+  'interested',
+  'contacted',
+  'confirmed',
+  'passed',
+]);
+
+export const interestPriority = pgEnum('interest_priority', [
+  'low',
+  'medium',
+  'high',
+]);
+
 export const lpNotificationPreference = pgEnum('lp_notification_preference', [
   'always',
   'sector_match',
@@ -121,9 +134,13 @@ export const auditAction = pgEnum('audit_action', [
   'interest.indicated',
   'interest.committed',
   'interest.withdrawn',
+  'interest.crm_updated',
+  'interest.note_added',
+  'interest.crm_email_sent',
   'opportunity.followed',
   'opportunity.unfollowed',
   'opportunity.update_sent',
+  'opportunity.exported',
   'nda.sent',
   'nda.signed',
   'nda_template.created',
@@ -149,6 +166,7 @@ export const profiles = pgTable('profiles', {
   role: userRole('role').notNull(),
   email: text('email').notNull(),
   fullName: text('full_name'),
+  profilePictureStorageKey: text('profile_picture_storage_key'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
@@ -170,6 +188,7 @@ export const lps = pgTable('lps', {
   phone: text('phone'),
 
   status: lpStatus('status').notNull().default('invited'),
+  exportEnabled: boolean('export_enabled').notNull().default(false),
 
   kycStatusCol: kycStatus('kyc_status').notNull().default('not_started'),
   kycProvider: text('kyc_provider'),
@@ -287,6 +306,7 @@ export const opportunities = pgTable('opportunities', {
   // provider-specific source reference. See docs/nda-gate-design.md §5.2.
   ndaTemplateId: uuid('nda_template_id').references(() => ndaTemplates.id, { onDelete: 'set null' }),
   watermarkEnabled: boolean('watermark_enabled').notNull().default(false),
+  exportEnabled: boolean('export_enabled').notNull().default(false),
   passwordProtected: boolean('password_protected').notNull().default(false),
 
   visibleToAllApprovedLps: boolean('visible_to_all_approved_lps').notNull().default(false),
@@ -528,9 +548,31 @@ export const interests = pgTable('interests', {
   indicatedAt: timestamp('indicated_at', { withTimezone: true }).notNull().defaultNow(),
   committedAt: timestamp('committed_at', { withTimezone: true }),
   withdrawnAt: timestamp('withdrawn_at', { withTimezone: true }),
+  pipelineStatus: interestPipelineStatus('pipeline_status').notNull().default('interested'),
+  priority: interestPriority('priority'),
+  ownerProfileId: uuid('owner_profile_id').references(() => profiles.id),
+  confirmedAmountCents: bigint('confirmed_amount_cents', { mode: 'bigint' }),
+  confirmedByProfileId: uuid('confirmed_by_profile_id').references(() => profiles.id),
+  confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
 }, (t) => ({
   uniqOpportunityLp: uniqueIndex('interests_opp_lp_idx').on(t.opportunityId, t.lpId),
   opportunityIdx: index('interests_opportunity_idx').on(t.opportunityId),
+  pipelineStatusIdx: index('interests_pipeline_status_idx').on(t.pipelineStatus),
+  ownerProfileIdx: index('interests_owner_profile_idx').on(t.ownerProfileId),
+}));
+
+// ---------------------------------------------------------------------------
+// interest_notes — admin-only threaded notes on a deal's interest row.
+// Color is derived in the UI from author_profile_id, not stored.
+// ---------------------------------------------------------------------------
+export const interestNotes = pgTable('interest_notes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  interestId: uuid('interest_id').notNull().references(() => interests.id, { onDelete: 'cascade' }),
+  authorProfileId: uuid('author_profile_id').notNull().references(() => profiles.id),
+  body: text('body').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  interestIdx: index('interest_notes_interest_idx').on(t.interestId),
 }));
 
 // ---------------------------------------------------------------------------
@@ -599,6 +641,19 @@ export const lpsRelations = relations(lps, ({ one, many }) => ({
   accountNda: one(accountNdas, { fields: [lps.id], references: [accountNdas.lpId] }),
   tags: many(lpTags),
   follows: many(opportunityFollows),
+}));
+
+export const interestsRelations = relations(interests, ({ one, many }) => ({
+  opportunity: one(opportunities, { fields: [interests.opportunityId], references: [opportunities.id] }),
+  lp: one(lps, { fields: [interests.lpId], references: [lps.id] }),
+  owner: one(profiles, { fields: [interests.ownerProfileId], references: [profiles.id] }),
+  confirmedBy: one(profiles, { fields: [interests.confirmedByProfileId], references: [profiles.id] }),
+  notes: many(interestNotes),
+}));
+
+export const interestNotesRelations = relations(interestNotes, ({ one }) => ({
+  interest: one(interests, { fields: [interestNotes.interestId], references: [interests.id] }),
+  author: one(profiles, { fields: [interestNotes.authorProfileId], references: [profiles.id] }),
 }));
 
 export const accountNdasRelations = relations(accountNdas, ({ one }) => ({

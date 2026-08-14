@@ -19,6 +19,7 @@ import {
 } from 'react';
 
 import { saveOpportunityDraft } from '@/app/admin/opportunities/actions';
+import { OpportunityExportButton } from '@/components/webflow/opportunity-export-button';
 import { OpportunityFollowerNotifyCard } from '@/components/webflow/opportunity-follower-notify-card';
 import { buildAppUrl } from '@/lib/app-url';
 import { Select } from '@/components/base/select/select';
@@ -67,6 +68,7 @@ export type OpportunityEditorInitialData = {
     ndaRequired: boolean;
     ndaTemplateId: string | null;
     watermarkEnabled: boolean;
+    exportEnabled: boolean;
     passwordProtected: boolean;
     // The actual stored gate password (plaintext, retrievable). Loaded only on
     // the admin-only editor route so the admin can view and reveal it.
@@ -2421,6 +2423,7 @@ export function OpportunityEditor({
     initialOpportunity?.ndaTemplateId ?? null,
   );
   const [watermarkEnabled, setWatermarkEnabled] = useState(initialOpportunity?.watermarkEnabled ?? false);
+  const [exportEnabled, setExportEnabled] = useState(initialOpportunity?.exportEnabled ?? false);
   const [passwordProtected, setPasswordProtected] = useState(initialOpportunity?.passwordProtected ?? false);
   // Seeded with the actual saved gate password (plaintext) so the field shows
   // the real value (masked) and the eye toggle can reveal it. Edits replace it.
@@ -2501,6 +2504,7 @@ export function OpportunityEditor({
       ndaRequired,
       ndaTemplateId,
       watermarkEnabled,
+      exportEnabled,
       passwordProtected,
       // The field holds the actual password; send it as-is. Resending the
       // unchanged value keeps the same password; clearing it is rejected by the
@@ -3053,6 +3057,16 @@ export function OpportunityEditor({
                   </div>
                   <div className="fieldblock">
                     <CheckboxRow
+                      label="Allow export"
+                      checked={exportEnabled}
+                      onChange={(checked) => {
+                        setExportEnabled(checked);
+                        markDirty();
+                      }}
+                    />
+                  </div>
+                  <div className="fieldblock">
+                    <CheckboxRow
                       label="Password protected"
                       checked={passwordProtected}
                       onChange={(checked) => {
@@ -3128,6 +3142,11 @@ export function OpportunityEditor({
           >
             <div>Preview</div>
           </a>
+          <OpportunityExportButton
+            slug={initialData.slug}
+            disabled={isCreating}
+            className="button short editor-savebar-button editor-savebar-preview-button w-inline-block"
+          />
         </div>
       </div>
     </div>

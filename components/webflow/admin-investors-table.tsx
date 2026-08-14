@@ -36,6 +36,7 @@ export type AdminInvestorRow = {
   fullName: string | null;
   entityName: string | null;
   status: 'invited' | 'onboarding' | 'pending_review' | 'approved' | 'rejected' | 'removed' | 'outsider';
+  exportEnabled: boolean;
   kind: 'insider' | 'outsider';
   sectors: InvestorSector[];
   investmentRangeMin: number | null;
@@ -73,6 +74,25 @@ function kindLabel(kind: AdminInvestorRow['kind']) {
 
 function kindBadgeColor(kind: AdminInvestorRow['kind']): BadgeColors {
   return kind === 'outsider' ? 'gray' : 'success';
+}
+
+function InvestorCheckIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      width="64"
+      height="64"
+      className="checkicon"
+    >
+      <g fill="none" fillRule="evenodd">
+        <path
+          fill="currentColor"
+          d="M21.546 5.111a1.5 1.5 0 0 1 0 2.121L10.303 18.475a1.6 1.6 0 0 1-2.263 0L2.454 12.89a1.5 1.5 0 1 1 2.121-2.121l4.596 4.596L19.424 5.111a1.5 1.5 0 0 1 2.122 0Z"
+        />
+      </g>
+    </svg>
+  );
 }
 
 function KindBadge({ kind }: { kind: AdminInvestorRow['kind'] }) {
@@ -407,11 +427,13 @@ function InvestorSlideout({
   const [fullName, setFullName] = useState(investor.fullName ?? '');
   const [entityName, setEntityName] = useState(investor.entityName ?? '');
   const [status, setStatus] = useState<AdminInvestorRow['status']>(investor.status);
+  const [exportEnabled, setExportEnabled] = useState(investor.exportEnabled);
   const [message, setMessage] = useState<UpdateInvestorResult | null>(null);
   const [isPending, startTransition] = useTransition();
   const hasChanges = fullName.trim() !== (investor.fullName ?? '').trim()
     || entityName.trim() !== (investor.entityName ?? '').trim()
-    || status !== investor.status;
+    || status !== investor.status
+    || exportEnabled !== investor.exportEnabled;
 
   function handleSubmit(formData: FormData) {
     if (!hasChanges) return;
@@ -492,6 +514,33 @@ function InvestorSlideout({
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
+          </div>
+
+          <div className="fieldblock">
+            <div className="fieldlabel">Allow Export</div>
+            <input type="hidden" name="exportEnabled" value={exportEnabled ? 'true' : 'false'} />
+            <button
+              type="button"
+              className="checkboxrow"
+              onClick={() => {
+                setMessage(null);
+                setExportEnabled((current) => !current);
+              }}
+              aria-pressed={exportEnabled}
+            >
+              <div className="interestchecks-row">
+                {exportEnabled ? (
+                  <div className="checkboxtoggle checked">
+                    <InvestorCheckIcon />
+                  </div>
+                ) : (
+                  <div className="checkboxtoggle" />
+                )}
+              </div>
+              <div>
+                <div>Allow this LP to export marked opportunities</div>
+              </div>
+            </button>
           </div>
 
           <div className="fieldblock">

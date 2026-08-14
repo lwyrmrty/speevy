@@ -36,6 +36,17 @@ function localPrintBaseUrl() {
   return `http://127.0.0.1:${process.env.PORT || '3000'}`;
 }
 
+const CHROMIUM_PACK_VERSION = '149.0.0';
+
+function chromiumPackUrl() {
+  if (process.env.CHROMIUM_PACK_URL) {
+    return process.env.CHROMIUM_PACK_URL;
+  }
+
+  const arch = process.arch === 'arm64' ? 'arm64' : 'x64';
+  return `https://github.com/Sparticuz/chromium/releases/download/v${CHROMIUM_PACK_VERSION}/chromium-v${CHROMIUM_PACK_VERSION}-pack.${arch}.tar`;
+}
+
 function printBaseUrl() {
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`;
@@ -63,11 +74,14 @@ export async function renderOpportunityOverviewPdf(printUrl: string) {
 
   let browser;
   if (isServerless || !localExecutablePath) {
-    const { default: chromium } = await import('@sparticuz/chromium');
+    // Vercel file tracing drops the 66MB Chromium bin from @sparticuz/chromium.
+    // The -min package downloads the official pack into /tmp on first invoke.
+    const { default: chromium } = await import('@sparticuz/chromium-min');
+    chromium.setGraphicsMode = false;
     browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: { width: 1280, height: 1800 },
-      executablePath: await chromium.executablePath(),
+      executablePath: await chromium.executablePath(chromiumPackUrl()),
       headless: true,
     });
   } else {

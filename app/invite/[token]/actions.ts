@@ -2,11 +2,26 @@
 
 import type { AuthActionState } from '@/app/login/actions';
 
+// These actions do not send or verify codes yet, so they do not share the
+// login rate-limit buckets. They still avoid throwing when the body never
+// became FormData — the same crash seen on POST /login.
+function readInviteEmail(formData: FormData | undefined): string {
+  if (!formData || typeof formData.get !== 'function') {
+    return '';
+  }
+
+  try {
+    return String(formData.get('email') ?? '').trim();
+  } catch {
+    return '';
+  }
+}
+
 export async function sendInviteCode(
   _previousState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
-  const email = String(formData.get('email') ?? '').trim();
+  const email = readInviteEmail(formData);
 
   return {
     status: 'success',
@@ -22,7 +37,7 @@ export async function verifyInviteCode(
 ): Promise<AuthActionState> {
   return {
     status: 'error',
-    email: String(formData.get('email') ?? ''),
+    email: readInviteEmail(formData),
     message:
       'Invite code verification will be enabled after invitation token validation is implemented.',
   };

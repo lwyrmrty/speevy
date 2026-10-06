@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useCallback, useEffect, useRef, useState } from 'react';
 
 import type { AuthActionState } from '@/app/login/actions';
 import { sendLoginCode, verifyLoginCode } from '@/app/login/actions';
@@ -8,6 +8,7 @@ import {
   sendInviteCode,
   verifyInviteCode,
 } from '@/app/invite/[token]/actions';
+import { TurnstileWidget, type TurnstileHandle } from '@/components/auth/turnstile-widget';
 import { Button } from '@/components/ui/button';
 
 const initialState: AuthActionState = {
@@ -30,15 +31,37 @@ export function OtpLoginForm({
 }: OtpLoginFormProps) {
   const [email, setEmail] = useState(initialEmail);
   const [codeRequested, setCodeRequested] = useState(false);
+  const sendTurnstileRef = useRef<TurnstileHandle>(null);
+  const verifyTurnstileRef = useRef<TurnstileHandle>(null);
   const sendActionForFlow = flow === 'invite' ? sendInviteCode : sendLoginCode;
   const verifyActionForFlow =
     flow === 'invite' ? verifyInviteCode : verifyLoginCode;
+  const sendWithReset = useCallback(
+    async (previous: AuthActionState, formData: FormData) => {
+      try {
+        return await sendActionForFlow(previous, formData);
+      } finally {
+        sendTurnstileRef.current?.reset();
+      }
+    },
+    [sendActionForFlow],
+  );
+  const verifyWithReset = useCallback(
+    async (previous: AuthActionState, formData: FormData) => {
+      try {
+        return await verifyActionForFlow(previous, formData);
+      } finally {
+        verifyTurnstileRef.current?.reset();
+      }
+    },
+    [verifyActionForFlow],
+  );
   const [sendState, sendAction, sendPending] = useActionState(
-    sendActionForFlow,
+    sendWithReset,
     initialState,
   );
   const [verifyState, verifyAction, verifyPending] = useActionState(
-    verifyActionForFlow,
+    verifyWithReset,
     initialState,
   );
 
@@ -74,6 +97,7 @@ export function OtpLoginForm({
           />
         </div>
 
+        <TurnstileWidget ref={sendTurnstileRef} />
         <Button
           type="submit"
           size="lg"
@@ -103,6 +127,7 @@ export function OtpLoginForm({
               className="h-12 w-full rounded-xl border border-input bg-white px-4 text-center font-mono text-2xl tracking-[0.4em] text-ink shadow-sm outline-none transition placeholder:text-muted-foreground focus:border-copper focus:ring-4 focus:ring-copper/15"
             />
           </div>
+          <TurnstileWidget ref={verifyTurnstileRef} />
           <Button
             type="submit"
             size="lg"

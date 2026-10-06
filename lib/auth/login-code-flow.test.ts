@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 
 import { AUTH_RATE_LIMIT_MESSAGE, authRateLimitExceeded } from '@/lib/auth-rate-limit';
 import {
@@ -75,9 +75,36 @@ function flowDeps(
   };
 }
 
+const savedTurnstileSecret = process.env.TURNSTILE_SECRET_KEY;
+const originalFetch = globalThis.fetch;
+
+before(() => {
+  process.env.TURNSTILE_SECRET_KEY = 'test-turnstile-secret';
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (url !== 'https://challenges.cloudflare.com/turnstile/v0/siteverify') {
+      throw new Error('unexpected fetch in login code flow test');
+    }
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as typeof fetch;
+});
+
+after(() => {
+  globalThis.fetch = originalFetch;
+  if (savedTurnstileSecret === undefined) {
+    delete process.env.TURNSTILE_SECRET_KEY;
+  } else {
+    process.env.TURNSTILE_SECRET_KEY = savedTurnstileSecret;
+  }
+});
+
 function emailForm(email: string) {
   const formData = new FormData();
   formData.set('email', email);
+  formData.set('cf-turnstile-response', 'test-turnstile-token');
   return formData;
 }
 
@@ -226,10 +253,11 @@ describe('login code flow rate limit', () => {
     assert.deepEqual(admin.keys, ['auth-attempt-ip:203.0.113.20']);
   });
 
-  it('returns the validation error for a missing body when the limit allows it', async () => {
+  it('stops before the rate limit when the body has no turnstile token', async () => {
+    let rateChecks = 0;
     const deps = flowDeps({
-      isRateLimited: async (_kind, email) => {
-        assert.equal(email, null);
+      isRateLimited: async () => {
+        rateChecks += 1;
         return false;
       },
     });
@@ -237,14 +265,19 @@ describe('login code flow rate limit', () => {
     const result = await sendLoginCodeFlow(undefined, deps);
 
     assert.equal(result.status, 'error');
-    assert.equal(result.message, 'Enter a valid email address.');
+    assert.equal(result.message, 'Confirm you are not a robot and try again.');
+    assert.equal(rateChecks, 0);
     assert.deepEqual(deps.issued, []);
     assert.deepEqual(deps.emailed, []);
   });
 
-  it('returns the validation error when formData.get throws', async () => {
+  it('stops before the rate limit when formData.get throws', async () => {
+    let rateChecks = 0;
     const deps = flowDeps({
-      isRateLimited: async () => false,
+      isRateLimited: async () => {
+        rateChecks += 1;
+        return false;
+      },
     });
     const broken = {
       get() {
@@ -256,7 +289,8 @@ describe('login code flow rate limit', () => {
     // where get throws before a field can be read.
     const result = await sendLoginCodeFlow(broken as unknown as FormData, deps);
 
-    assert.equal(result.message, 'Enter a valid email address.');
+    assert.equal(result.message, 'Confirm you are not a robot and try again.');
+    assert.equal(rateChecks, 0);
     assert.deepEqual(deps.issued, []);
   });
 

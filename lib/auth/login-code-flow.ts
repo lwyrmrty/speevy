@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { AUTH_RATE_LIMIT_MESSAGE, type AuthRateLimitKind } from '@/lib/auth-rate-limit';
+import { requireTurnstile } from '@/lib/auth/turnstile';
 
 export type AuthActionState = {
   status: 'idle' | 'success' | 'error';
@@ -82,6 +83,12 @@ export async function sendLoginCodeFlow(
   formData: FormData | undefined,
   deps: LoginCodeFlowDeps,
 ): Promise<AuthActionState> {
+  // Before rate-limit counters, code issuance, and login email.
+  const turnstile = await requireTurnstile(formData);
+  if (!turnstile.ok) {
+    return { status: 'error', message: turnstile.message };
+  }
+
   const fields = readFormFields(formData, ['email']);
   const parsed = emailSchema.safeParse({
     email: fields?.email,
@@ -174,6 +181,12 @@ export async function verifyLoginCodeFlow(
   formData: FormData | undefined,
   deps: LoginCodeFlowDeps,
 ): Promise<AuthActionState> {
+  // Before rate-limit counters and verifyOtp.
+  const turnstile = await requireTurnstile(formData);
+  if (!turnstile.ok) {
+    return { status: 'error', message: turnstile.message };
+  }
+
   const fields = readFormFields(formData, ['email', 'code']);
   const parsed = codeSchema.safeParse({
     email: fields?.email,

@@ -2,6 +2,7 @@
 
 import {
   useActionState,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -13,6 +14,7 @@ import {
 
 import type { AuthActionState } from '@/app/login/actions';
 import { sendLoginCode, verifyLoginCode } from '@/app/login/actions';
+import { TurnstileWidget, type TurnstileHandle } from '@/components/auth/turnstile-widget';
 
 const initialState: AuthActionState = {
   status: 'idle',
@@ -28,14 +30,33 @@ export function WebflowLoginForm() {
     Array.from({ length: CODE_LENGTH }, () => ''),
   );
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
+  const emailTurnstileRef = useRef<TurnstileHandle>(null);
+  const codeTurnstileRef = useRef<TurnstileHandle>(null);
+  const codeFormRef = useRef<HTMLFormElement>(null);
   const [, startTransition] = useTransition();
 
+  const sendLogin = useCallback(async (previous: AuthActionState, formData: FormData) => {
+    try {
+      return await sendLoginCode(previous, formData);
+    } finally {
+      emailTurnstileRef.current?.reset();
+      codeTurnstileRef.current?.reset();
+    }
+  }, []);
+  const verifyLogin = useCallback(async (previous: AuthActionState, formData: FormData) => {
+    try {
+      return await verifyLoginCode(previous, formData);
+    } finally {
+      codeTurnstileRef.current?.reset();
+    }
+  }, []);
+
   const [sendState, sendAction, sendPending] = useActionState(
-    sendLoginCode,
+    sendLogin,
     initialState,
   );
   const [verifyState, verifyAction, verifyPending] = useActionState(
-    verifyLoginCode,
+    verifyLogin,
     initialState,
   );
 
@@ -102,6 +123,10 @@ export function WebflowLoginForm() {
     if (!email) return;
     const formData = new FormData();
     formData.set('email', email);
+    const token = codeFormRef.current?.querySelector<HTMLInputElement>(
+      'input[name="cf-turnstile-response"]',
+    )?.value;
+    if (token) formData.set('cf-turnstile-response', token);
     startTransition(() => {
       sendAction(formData);
     });
@@ -145,6 +170,7 @@ export function WebflowLoginForm() {
               required
             />
           </div>
+          <TurnstileWidget ref={emailTurnstileRef} />
           <input
             type="submit"
             className="button w-button"
@@ -169,7 +195,7 @@ export function WebflowLoginForm() {
 
   return (
     <div className="formblock w-form">
-      <form action={verifyAction} className="loginform">
+      <form ref={codeFormRef} action={verifyAction} className="loginform">
         <div>
           <div className="loginheader">Check your email</div>
           <div className="loginsubheader">
@@ -204,6 +230,7 @@ export function WebflowLoginForm() {
             ))}
           </div>
         </div>
+        <TurnstileWidget ref={codeTurnstileRef} />
         <input
           type="submit"
           className="button w-button"

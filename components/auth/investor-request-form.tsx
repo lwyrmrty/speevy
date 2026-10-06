@@ -1,7 +1,7 @@
 'use client';
 
 import type { PointerEvent as ReactPointerEvent } from 'react';
-import { useActionState, useEffect, useRef, useState } from 'react';
+import { useActionState, useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   INVESTMENT_RANGE_MAX,
@@ -15,6 +15,7 @@ import {
   submitInvestorRequest,
   type InvestorRequestActionState,
 } from '@/app/join/[token]/actions';
+import { TurnstileWidget, type TurnstileHandle } from '@/components/auth/turnstile-widget';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 
 const initialState: InvestorRequestActionState = {
@@ -63,8 +64,19 @@ function DropdownIcon({ open }: { open: boolean }) {
 }
 
 export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
+  const turnstileRef = useRef<TurnstileHandle>(null);
+  const submitRequest = useCallback(
+    async (previous: InvestorRequestActionState, formData: FormData) => {
+      try {
+        return await submitInvestorRequest(previous, formData);
+      } finally {
+        turnstileRef.current?.reset();
+      }
+    },
+    [],
+  );
   const [state, action, pending] = useActionState(
-    submitInvestorRequest,
+    submitRequest,
     initialState,
   );
   const [investmentRange, setInvestmentRange] = useState<[number, number]>([
@@ -358,6 +370,7 @@ export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
         </div>
       </div>
 
+      <TurnstileWidget ref={turnstileRef} />
       <button type="submit" className="button w-button" disabled={pending}>
         {pending ? 'Please wait...' : 'Create account'}
       </button>

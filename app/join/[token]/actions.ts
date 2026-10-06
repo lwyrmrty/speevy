@@ -20,8 +20,19 @@ import {
 } from '@/lib/loops/transactional';
 import { buildNdaOnboardingUrl } from '@/lib/nda/tokens';
 import { notifyZapierLpAccessRequest } from '@/lib/zapier/notifications';
+import { requireTurnstile } from '@/lib/auth/turnstile';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 import { hasSupabaseServiceRoleEnv } from '@/lib/supabase/env';
+
+type InvestorRequestDeps = {
+  hasServiceRoleEnv: () => boolean;
+  createAdminClient: () => ReturnType<typeof createSupabaseAdminClient>;
+};
+
+const investorRequestDeps: InvestorRequestDeps = {
+  hasServiceRoleEnv: hasSupabaseServiceRoleEnv,
+  createAdminClient: createSupabaseAdminClient,
+};
 
 export type InvestorRequestActionState = {
   status: 'idle' | 'success' | 'error';
@@ -75,7 +86,13 @@ function logEmailFailures(label: string, results: PromiseSettledResult<unknown>[
 export async function submitInvestorRequest(
   _previousState: InvestorRequestActionState,
   formData: FormData,
+  deps: InvestorRequestDeps = investorRequestDeps,
 ): Promise<InvestorRequestActionState> {
+  const turnstile = await requireTurnstile(formData);
+  if (!turnstile.ok) {
+    return { status: 'error', message: turnstile.message };
+  }
+
   const parsed = investorRequestSchema.safeParse({
     token: formData.get('token'),
     firstName: formData.get('firstName'),
@@ -117,7 +134,7 @@ export async function submitInvestorRequest(
     submittedAt,
   };
 
-  if (!hasSupabaseServiceRoleEnv()) {
+  if (!deps.hasServiceRoleEnv()) {
     return {
       status: 'success',
       message:
@@ -125,7 +142,7 @@ export async function submitInvestorRequest(
     };
   }
 
-  const supabase = createSupabaseAdminClient();
+  const supabase = deps.createAdminClient();
   const { data: existingLp } = await supabase
     .from('lps')
     .select('id')

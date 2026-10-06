@@ -2,6 +2,8 @@
 
 import type { AuthActionState } from '@/app/login/actions';
 
+import { requireTurnstile } from '@/lib/auth/turnstile';
+
 // These actions do not send or verify codes yet, so they do not share the
 // login rate-limit buckets. They still avoid throwing when the body never
 // became FormData — the same crash seen on POST /login.
@@ -21,6 +23,11 @@ export async function sendInviteCode(
   _previousState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
+  const turnstile = await requireTurnstile(formData);
+  if (!turnstile.ok) {
+    return { status: 'error', message: turnstile.message };
+  }
+
   const email = readInviteEmail(formData);
 
   return {
@@ -35,6 +42,11 @@ export async function verifyInviteCode(
   _previousState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
+  const turnstile = await requireTurnstile(formData);
+  if (!turnstile.ok) {
+    return { status: 'error', message: turnstile.message };
+  }
+
   return {
     status: 'error',
     email: readInviteEmail(formData),

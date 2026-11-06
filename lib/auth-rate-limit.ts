@@ -19,12 +19,13 @@ export const AUTH_RATE_LIMIT_MESSAGE =
 
 // Every send or verify that reaches the action, including unknown emails and
 // invalid input. Shared across both actions.
-export const AUTH_ATTEMPT_MAX_PER_IP = 8;
+export const AUTH_ATTEMPT_MAX_PER_IP = 30;
 export const AUTH_ATTEMPT_WINDOW_SECONDS = 10 * 60;
 
 // Code issuance per recipient. generateLink replaces the previous code, so
-// a burst of sends is the abuse we are stopping.
-export const AUTH_CODE_SEND_MAX_PER_EMAIL = 2;
+// a burst of sends is the abuse we are stopping. Keep enough room for a
+// failed Turnstile/iOS retry without locking the LP out of their own code.
+export const AUTH_CODE_SEND_MAX_PER_EMAIL = 10;
 export const AUTH_CODE_SEND_WINDOW_SECONDS = 30 * 60;
 
 // Code checks per recipient, before verifyOtp.

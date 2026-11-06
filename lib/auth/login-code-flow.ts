@@ -7,6 +7,7 @@ export type AuthActionState = {
   status: 'idle' | 'success' | 'error';
   message: string;
   email?: string;
+  redirectTo?: string;
 };
 
 const emailSchema = z.object({

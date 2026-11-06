@@ -26,6 +26,7 @@ describe('TurnstileWidget', () => {
     assert.match(frameSource, /__speevyTurnstileToken/);
     assert.match(frameSource, /event\.data\.type === 'ack'/);
     assert.match(frameSource, /getElementsByName\('cf-turnstile-response'\)/);
-    assert.match(widgetSource, /pointerEvents: token \? 'none' : 'auto'/);
+    assert.match(widgetSource, /Verification complete/);
+    assert.match(widgetSource, /\{token \? \(/);
   });
 });

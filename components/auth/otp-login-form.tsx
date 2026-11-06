@@ -23,6 +23,7 @@ import {
   type TurnstileHandle,
 } from '@/components/auth/turnstile-widget';
 import { Button } from '@/components/ui/button';
+import { followLoginRedirect } from '@/lib/auth/login-redirect';
 import { runAuthAction } from '@/lib/auth/run-auth-action';
 
 const initialState: AuthActionState = {
@@ -65,6 +66,9 @@ export function OtpLoginForm({
   const verifyWithReset = useCallback(
     async (previous: AuthActionState, formData: FormData) => {
       const result = await runAuthAction(verifyActionForFlow, previous, formData);
+      if (result.redirectTo) {
+        return result;
+      }
       if (shouldResetTurnstile(result.message)) {
         verifyTurnstileRef.current?.reset();
       }
@@ -91,6 +95,10 @@ export function OtpLoginForm({
       setEmail(sendState.email);
     }
   }, [sendState]);
+
+  useEffect(() => {
+    followLoginRedirect(verifyState.redirectTo);
+  }, [verifyState]);
 
   function handleSendSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

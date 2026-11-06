@@ -1,7 +1,5 @@
 'use server';
 
-import { redirect } from 'next/navigation';
-
 import {
   authRateLimitExceeded,
   type AuthRateLimitKind,
@@ -128,7 +126,12 @@ const loginCodeDeps = {
 
     const userId = data?.user?.id;
     if (!userId) {
-      redirect(destinationFor(authorization));
+      return {
+        status: 'success',
+        email,
+        message: '',
+        redirectTo: destinationFor(authorization),
+      };
     }
 
     if (authorization.role === 'lp') {
@@ -160,7 +163,13 @@ const loginCodeDeps = {
       .eq('id', userId)
       .maybeSingle();
 
-    redirect(profile?.role === 'admin' ? '/admin' : destinationFor(authorization));
+    return {
+      status: 'success',
+      email,
+      message: '',
+      redirectTo:
+        profile?.role === 'admin' ? '/admin' : destinationFor(authorization),
+    };
   },
 };
 

@@ -28,5 +28,8 @@ describe('WebflowLoginForm', () => {
     assert.match(source, /fillCodeDigits/);
     assert.match(source, /maxLength=\{index === 0 \? CODE_LENGTH : 1\}/);
     assert.match(source, /readEnteredCode/);
+    assert.match(source, /type="button"/);
+    assert.match(source, /onClick=\{submitVerification\}/);
+    assert.match(source, /followLoginRedirect/);
   });
 });

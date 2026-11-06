@@ -124,6 +124,8 @@ export const TurnstileWidget = forwardRef<TurnstileHandle>(function TurnstileWid
   }, []);
 
   useEffect(() => {
+    if (token) return;
+
     const frame = frameRef.current;
     if (!frame) return;
 
@@ -135,7 +137,7 @@ export const TurnstileWidget = forwardRef<TurnstileHandle>(function TurnstileWid
     }, 200);
 
     return () => window.clearInterval(timer);
-  }, [frameNonce]);
+  }, [frameNonce, token]);
 
   if (!siteKey) return null;
 
@@ -147,21 +149,26 @@ export const TurnstileWidget = forwardRef<TurnstileHandle>(function TurnstileWid
         name={TURNSTILE_FIELD}
         defaultValue={token}
       />
-      <iframe
-        ref={frameRef}
-        key={frameNonce}
-        title="Verification"
-        src={`/turnstile-frame.html?sitekey=${encodeURIComponent(siteKey)}`}
-        style={{
-          width: '100%',
-          height: 70,
-          border: 0,
-          overflow: 'hidden',
-          position: 'relative',
-          zIndex: 0,
-          pointerEvents: token ? 'none' : 'auto',
-        }}
-      />
+      {token ? (
+        <p className="loginsubheader" style={{ margin: 0 }} aria-live="polite">
+          Verification complete
+        </p>
+      ) : (
+        <iframe
+          ref={frameRef}
+          key={frameNonce}
+          title="Verification"
+          src={`/turnstile-frame.html?sitekey=${encodeURIComponent(siteKey)}`}
+          style={{
+            width: '100%',
+            height: 70,
+            border: 0,
+            overflow: 'hidden',
+            position: 'relative',
+            zIndex: 0,
+          }}
+        />
+      )}
     </>
   );
 });

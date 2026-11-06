@@ -22,6 +22,10 @@ import {
   TurnstileWidget,
   type TurnstileHandle,
 } from '@/components/auth/turnstile-widget';
+import {
+  followLoginRedirect,
+  isSafeLoginRedirect,
+} from '@/lib/auth/login-redirect';
 import { runAuthAction } from '@/lib/auth/run-auth-action';
 
 const initialState: AuthActionState = {
@@ -44,6 +48,7 @@ export function WebflowLoginForm() {
   const [, startTransition] = useTransition();
 
   const [challengeMessage, setChallengeMessage] = useState('');
+  const [verifyBusy, setVerifyBusy] = useState(false);
 
   const sendLogin = useCallback(async (previous: AuthActionState, formData: FormData) => {
     const result = await runAuthAction(sendLoginCode, previous, formData);
@@ -55,6 +60,9 @@ export function WebflowLoginForm() {
   }, []);
   const verifyLogin = useCallback(async (previous: AuthActionState, formData: FormData) => {
     const result = await runAuthAction(verifyLoginCode, previous, formData);
+    if (result.redirectTo) {
+      return result;
+    }
     if (shouldResetTurnstile(result.message)) {
       codeTurnstileRef.current?.reset();
     }
@@ -81,6 +89,19 @@ export function WebflowLoginForm() {
     }
   }, [sendState]);
 
+  useEffect(() => {
+    followLoginRedirect(verifyState.redirectTo);
+  }, [verifyState]);
+
+  useEffect(() => {
+    if (verifyState.redirectTo && isSafeLoginRedirect(verifyState.redirectTo)) {
+      return;
+    }
+    if (!verifyPending) {
+      setVerifyBusy(false);
+    }
+  }, [verifyPending, verifyState.redirectTo]);
+
   function handleSendSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -102,22 +123,30 @@ export function WebflowLoginForm() {
       .slice(0, CODE_LENGTH);
   }
 
-  function handleVerifySubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function submitVerification() {
+    if (!hydrated || verifyBusy || verifyPending) return;
+
     const nextCode = readEnteredCode();
     if (nextCode.length < CODE_LENGTH) {
       setChallengeMessage('Enter the 6-digit code from your email.');
       return;
     }
 
-    const formData = new FormData(event.currentTarget);
+    const formData = new FormData();
+    formData.set('email', email);
     formData.set('code', nextCode);
     if (!attachTurnstileToken(formData, codeTurnstileRef.current)) {
       setChallengeMessage(TURNSTILE_WAIT_MESSAGE);
       return;
     }
     setChallengeMessage('');
+    setVerifyBusy(true);
     verifyAction(formData);
+  }
+
+  function handleVerifySubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    submitVerification();
   }
 
   useEffect(() => {
@@ -292,13 +321,23 @@ export function WebflowLoginForm() {
             ))}
           </div>
         </div>
-        <input
-          type="submit"
+        <button
+          type="button"
           className="button w-button"
-          value={verifyPending ? 'Please wait…' : 'Go to account'}
-          disabled={!hydrated || verifyPending}
-          style={{ position: 'relative', zIndex: 1 }}
-        />
+          onClick={submitVerification}
+          disabled={!hydrated || verifyBusy || verifyPending}
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            width: '100%',
+            cursor: verifyBusy || verifyPending ? 'wait' : 'pointer',
+            touchAction: 'manipulation',
+            appearance: 'none',
+            font: 'inherit',
+          }}
+        >
+          {verifyBusy || verifyPending ? 'Please wait…' : 'Go to account'}
+        </button>
         {hydrated ? <TurnstileWidget ref={codeTurnstileRef} /> : null}
         <div className="loginsubheader">
           Didn&#x27;t receive the email? Check spam or{' '}

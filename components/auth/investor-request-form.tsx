@@ -1,6 +1,6 @@
 'use client';
 
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { FormEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useActionState, useCallback, useEffect, useRef, useState } from 'react';
 
 import {
@@ -90,6 +90,7 @@ export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
   const [draggingRangeHandle, setDraggingRangeHandle] = useState<0 | 1 | null>(null);
   const [accreditedInvestor, setAccreditedInvestor] = useState(true);
   const [priorHarpoonInvestor, setPriorHarpoonInvestor] = useState(true);
+  const [hydrated, setHydrated] = useState(false);
 
   const hasMessage = Boolean(state.message);
   const isError = state.status === 'error';
@@ -98,6 +99,15 @@ export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
   const maxRangeIndex = rangeValueToIndex(investmentRange[1]);
   const minRangePercent = rangeIndexToPercent(minRangeIndex);
   const maxRangePercent = rangeIndexToPercent(maxRangeIndex);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    action(new FormData(event.currentTarget));
+  }
 
   useEffect(() => {
     if (!sectorsOpen) return;
@@ -208,7 +218,7 @@ export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
   }
 
   return (
-    <form action={action} className="loginform">
+    <form onSubmit={handleSubmit} className="loginform">
       <input type="hidden" name="token" value={token} />
       {selectedSectors.map((sector) => (
         <input key={sector} type="hidden" name="sectors" value={sector} />
@@ -371,7 +381,7 @@ export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
       </div>
 
       <TurnstileWidget ref={turnstileRef} />
-      <button type="submit" className="button w-button" disabled={pending}>
+      <button type="submit" className="button w-button" disabled={!hydrated || pending}>
         {pending ? 'Please wait...' : 'Create account'}
       </button>
 

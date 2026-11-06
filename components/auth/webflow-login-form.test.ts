@@ -22,4 +22,11 @@ describe('WebflowLoginForm', () => {
     assert.match(source, /attachTurnstileToken\(formData, codeTurnstileRef/);
     assert.match(source, /shouldResetTurnstile\(result\.message\)/);
   });
+
+  it('keeps Go to account tappable and spreads an autofilled code', () => {
+    assert.equal(source.includes('code.length < CODE_LENGTH'), false);
+    assert.match(source, /fillCodeDigits/);
+    assert.match(source, /maxLength=\{index === 0 \? CODE_LENGTH : 1\}/);
+    assert.match(source, /readEnteredCode/);
+  });
 });

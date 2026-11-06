@@ -92,9 +92,26 @@ export function WebflowLoginForm() {
     sendAction(formData);
   }
 
+  function readEnteredCode(): string {
+    const fromState = digits.join('');
+    if (fromState.length === CODE_LENGTH) return fromState;
+
+    return inputsRef.current
+      .map((input) => (input?.value ?? '').replace(/\D/g, ''))
+      .join('')
+      .slice(0, CODE_LENGTH);
+  }
+
   function handleVerifySubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const nextCode = readEnteredCode();
+    if (nextCode.length < CODE_LENGTH) {
+      setChallengeMessage('Enter the 6-digit code from your email.');
+      return;
+    }
+
     const formData = new FormData(event.currentTarget);
+    formData.set('code', nextCode);
     if (!attachTurnstileToken(formData, codeTurnstileRef.current)) {
       setChallengeMessage(TURNSTILE_WAIT_MESSAGE);
       return;
@@ -119,17 +136,29 @@ export function WebflowLoginForm() {
     });
   }
 
+  function fillCodeDigits(raw: string) {
+    const chars = raw.replace(/\D/g, '').slice(0, CODE_LENGTH).split('');
+    setDigits(Array.from({ length: CODE_LENGTH }, (_, i) => chars[i] ?? ''));
+    const focusIndex = Math.min(Math.max(chars.length, 1), CODE_LENGTH) - 1;
+    queueMicrotask(() => {
+      inputsRef.current[focusIndex]?.focus();
+    });
+  }
+
   function handleDigitChange(
     index: number,
-    event: ChangeEvent<HTMLInputElement>,
+    event: ChangeEvent<HTMLInputElement> | FormEvent<HTMLInputElement>,
   ) {
-    const raw = event.target.value.replace(/\D/g, '');
+    const raw = event.currentTarget.value.replace(/\D/g, '');
     if (!raw) {
       setDigitAt(index, '');
       return;
     }
-    const char = raw[raw.length - 1];
-    setDigitAt(index, char);
+    if (index === 0 && raw.length > 1) {
+      fillCodeDigits(raw);
+      return;
+    }
+    setDigitAt(index, raw[raw.length - 1] ?? '');
     if (index < CODE_LENGTH - 1) {
       inputsRef.current[index + 1]?.focus();
     }
@@ -148,11 +177,7 @@ export function WebflowLoginForm() {
     const pasted = event.clipboardData.getData('text').replace(/\D/g, '');
     if (!pasted) return;
     event.preventDefault();
-    const chars = pasted.slice(0, CODE_LENGTH).split('');
-    const next = Array.from({ length: CODE_LENGTH }, (_, i) => chars[i] ?? '');
-    setDigits(next);
-    const focusIndex = Math.min(chars.length, CODE_LENGTH - 1);
-    inputsRef.current[focusIndex]?.focus();
+    fillCodeDigits(pasted);
   }
 
   function handleResend() {
@@ -254,26 +279,27 @@ export function WebflowLoginForm() {
                 className="codeblock w-input"
                 inputMode="numeric"
                 autoComplete={index === 0 ? 'one-time-code' : 'off'}
-                maxLength={1}
+                maxLength={index === 0 ? CODE_LENGTH : 1}
                 name={`field-${index + 1}`}
                 data-name="Field"
                 type="text"
                 value={digit}
                 onChange={(event) => handleDigitChange(index, event)}
+                onInput={(event) => handleDigitChange(index, event)}
                 onKeyDown={(event) => handleDigitKeyDown(index, event)}
                 onPaste={handlePaste}
-                required
               />
             ))}
           </div>
         </div>
-        {hydrated ? <TurnstileWidget ref={codeTurnstileRef} /> : null}
         <input
           type="submit"
           className="button w-button"
-            value={verifyPending ? 'Please wait…' : 'Go to account'}
-            disabled={!hydrated || verifyPending || code.length < CODE_LENGTH}
+          value={verifyPending ? 'Please wait…' : 'Go to account'}
+          disabled={!hydrated || verifyPending}
+          style={{ position: 'relative', zIndex: 1 }}
         />
+        {hydrated ? <TurnstileWidget ref={codeTurnstileRef} /> : null}
         <div className="loginsubheader">
           Didn&#x27;t receive the email? Check spam or{' '}
           <button

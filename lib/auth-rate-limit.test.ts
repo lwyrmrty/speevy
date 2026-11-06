@@ -168,7 +168,7 @@ describe('authRateLimitExceeded', () => {
     assert.equal(counts.has(authCodeVerifyBucket(email)), false);
   });
 
-  it('blocks the third code send for one email inside the issuance window', async () => {
+  it('blocks code sends after the per-email issuance cap', async () => {
     const { client, calls } = fakeAdmin({});
     const results: boolean[] = [];
 
@@ -182,7 +182,10 @@ describe('authRateLimitExceeded', () => {
       );
     }
 
-    assert.deepEqual(results, [false, false, true]);
+    assert.deepEqual(results, [
+      ...Array.from({ length: AUTH_CODE_SEND_MAX_PER_EMAIL }, () => false),
+      true,
+    ]);
     const sendCalls = calls.filter((call) => call.key === authCodeSendBucket(email));
     assert.equal(sendCalls.length, AUTH_CODE_SEND_MAX_PER_EMAIL + 1);
     assert.equal(sendCalls[0]?.windowSeconds, 30 * 60);

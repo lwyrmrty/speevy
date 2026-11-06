@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
-import { AUTH_RATE_LIMIT_MESSAGE, authRateLimitExceeded } from '@/lib/auth-rate-limit';
+import {
+  AUTH_ATTEMPT_MAX_PER_IP,
+  AUTH_CODE_SEND_MAX_PER_EMAIL,
+  AUTH_CODE_VERIFY_MAX_PER_EMAIL,
+  AUTH_RATE_LIMIT_MESSAGE,
+  authRateLimitExceeded,
+} from '@/lib/auth-rate-limit';
 import {
   sendLoginCodeFlow,
   verifyLoginCodeFlow,
@@ -138,7 +144,9 @@ describe('login code flow rate limit', () => {
   });
 
   it('blocks an over-IP send before code issuance or email', async () => {
-    const admin = countingAdmin(new Map([['auth-attempt-ip:203.0.113.20', 8]]));
+    const admin = countingAdmin(
+      new Map([['auth-attempt-ip:203.0.113.20', AUTH_ATTEMPT_MAX_PER_IP]]),
+    );
     const deps = flowDeps({
       isRateLimited: (kind, email) =>
         authRateLimitExceeded(admin.client, { kind, clientIp, email }),
@@ -155,8 +163,10 @@ describe('login code flow rate limit', () => {
     assert.deepEqual(admin.keys, ['auth-attempt-ip:203.0.113.20']);
   });
 
-  it('blocks the third code send for one email before generateLink or email', async () => {
-    const admin = countingAdmin(new Map([['auth-code-send:lp@harpoon.vc', 2]]));
+  it('blocks code sends after the per-email issuance cap before generateLink or email', async () => {
+    const admin = countingAdmin(
+      new Map([['auth-code-send:lp@harpoon.vc', AUTH_CODE_SEND_MAX_PER_EMAIL]]),
+    );
     const deps = flowDeps({
       isRateLimited: (kind, email) =>
         authRateLimitExceeded(admin.client, { kind, clientIp, email }),
@@ -170,7 +180,9 @@ describe('login code flow rate limit', () => {
   });
 
   it('returns the same limit message for an email that cannot sign in', async () => {
-    const admin = countingAdmin(new Map([['auth-code-send:stranger@example.com', 2]]));
+    const admin = countingAdmin(
+      new Map([['auth-code-send:stranger@example.com', AUTH_CODE_SEND_MAX_PER_EMAIL]]),
+    );
     let authorizationChecks = 0;
     const deps = flowDeps({
       isRateLimited: (kind, email) =>
@@ -225,7 +237,9 @@ describe('login code flow rate limit', () => {
   });
 
   it('blocks the sixth code check before verifyOtp', async () => {
-    const admin = countingAdmin(new Map([['auth-code-verify:lp@harpoon.vc', 5]]));
+    const admin = countingAdmin(
+      new Map([['auth-code-verify:lp@harpoon.vc', AUTH_CODE_VERIFY_MAX_PER_EMAIL]]),
+    );
     const deps = flowDeps({
       isRateLimited: (kind, email) =>
         authRateLimitExceeded(admin.client, { kind, clientIp, email }),
@@ -240,7 +254,9 @@ describe('login code flow rate limit', () => {
   });
 
   it('counts invalid input against the IP and blocks before verifyOtp', async () => {
-    const admin = countingAdmin(new Map([['auth-attempt-ip:203.0.113.20', 8]]));
+    const admin = countingAdmin(
+      new Map([['auth-attempt-ip:203.0.113.20', AUTH_ATTEMPT_MAX_PER_IP]]),
+    );
     const deps = flowDeps({
       isRateLimited: (kind, email) =>
         authRateLimitExceeded(admin.client, { kind, clientIp, email }),

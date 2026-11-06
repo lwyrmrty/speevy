@@ -16,6 +16,7 @@ import {
 import type { AuthActionState } from '@/app/login/actions';
 import { sendLoginCode, verifyLoginCode } from '@/app/login/actions';
 import { TurnstileWidget, type TurnstileHandle } from '@/components/auth/turnstile-widget';
+import { runAuthAction } from '@/lib/auth/run-auth-action';
 
 const initialState: AuthActionState = {
   status: 'idle',
@@ -39,7 +40,7 @@ export function WebflowLoginForm() {
 
   const sendLogin = useCallback(async (previous: AuthActionState, formData: FormData) => {
     try {
-      return await sendLoginCode(previous, formData);
+      return await runAuthAction(sendLoginCode, previous, formData);
     } finally {
       emailTurnstileRef.current?.reset();
       codeTurnstileRef.current?.reset();
@@ -47,7 +48,7 @@ export function WebflowLoginForm() {
   }, []);
   const verifyLogin = useCallback(async (previous: AuthActionState, formData: FormData) => {
     try {
-      return await verifyLoginCode(previous, formData);
+      return await runAuthAction(verifyLoginCode, previous, formData);
     } finally {
       codeTurnstileRef.current?.reset();
     }

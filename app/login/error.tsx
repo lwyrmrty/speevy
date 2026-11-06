@@ -6,7 +6,11 @@ export default function LoginError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const message = error.message?.trim();
+  const rawMessage = error.message?.trim();
+  const message =
+    rawMessage === 'An unexpected response was received from the server.'
+      ? 'Could not reach the server. Reload and try again.'
+      : rawMessage;
 
   return (
     <div className="adminpage-wrapper nopadding">

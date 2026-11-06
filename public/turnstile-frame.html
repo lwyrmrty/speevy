@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Verification</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+      }
+    </style>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async></script>
+  </head>
+  <body>
+    <div id="widget"></div>
+    <script>
+      (function () {
+        var sitekey = new URLSearchParams(location.search).get('sitekey') || '';
+        var rendered = false;
+
+        function notify(type, token) {
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage(
+              { source: 'speevy-turnstile', type: type, token: token || '' },
+              location.origin,
+            );
+          }
+        }
+
+        function renderWidget() {
+          if (rendered || !sitekey || !window.turnstile) return;
+          rendered = true;
+          try {
+            window.turnstile.render(document.getElementById('widget'), {
+              sitekey: sitekey,
+              callback: function (token) {
+                notify('token', token);
+              },
+              'expired-callback': function () {
+                notify('token', '');
+              },
+              'error-callback': function () {
+                notify('error', '');
+              },
+            });
+          } catch (error) {
+            notify('error', '');
+          }
+        }
+
+        if (window.turnstile) {
+          renderWidget();
+          return;
+        }
+
+        var started = Date.now();
+        var timer = setInterval(function () {
+          if (window.turnstile) {
+            clearInterval(timer);
+            renderWidget();
+            return;
+          }
+          if (Date.now() - started > 8000) {
+            clearInterval(timer);
+            notify('error', '');
+          }
+        }, 50);
+      })();
+    </script>
+  </body>
+</html>

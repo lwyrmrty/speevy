@@ -380,7 +380,7 @@ export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
         </div>
       </div>
 
-      <TurnstileWidget ref={turnstileRef} />
+      {hydrated ? <TurnstileWidget ref={turnstileRef} /> : null}
       <button type="submit" className="button w-button" disabled={!hydrated || pending}>
         {pending ? 'Please wait...' : 'Create account'}
       </button>

@@ -1,11 +1,13 @@
 'use client';
 
 export default function LoginError({
-  reset,
+  error,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const message = error.message?.trim();
+
   return (
     <div className="adminpage-wrapper nopadding">
       <div className="admin-wrapper tall">
@@ -18,7 +20,18 @@ export default function LoginError({
                   <div className="loginsubheader">
                     Something interrupted sign-in. Reload and try again.
                   </div>
-                  <button type="button" className="button w-button" onClick={reset}>
+                  {message ? (
+                    <div className="loginsubheader" style={{ color: '#b42318' }}>
+                      {message}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="button w-button"
+                    onClick={() => {
+                      window.location.replace('/login');
+                    }}
+                  >
                     Reload login
                   </button>
                 </div>

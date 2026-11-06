@@ -4,15 +4,18 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-const source = readFileSync(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), 'turnstile-widget.tsx'),
+const dir = path.dirname(fileURLToPath(import.meta.url));
+const widgetSource = readFileSync(path.join(dir, 'turnstile-widget.tsx'), 'utf8');
+const frameSource = readFileSync(
+  path.join(dir, '../../public/turnstile-frame.html'),
   'utf8',
 );
 
 describe('TurnstileWidget', () => {
-  it('uses explicit render and does not opt into implicit auto-render', () => {
-    assert.match(source, /api\.js\?render=explicit/);
-    assert.equal(source.includes('className="cf-turnstile"'), false);
-    assert.equal(/data-sitekey/.test(source), false);
+  it('renders Turnstile in a same-origin iframe so widget errors cannot crash login', () => {
+    assert.match(widgetSource, /turnstile-frame\.html/);
+    assert.equal(widgetSource.includes('className="cf-turnstile"'), false);
+    assert.equal(/data-sitekey/.test(widgetSource), false);
+    assert.match(frameSource, /api\.js\?render=explicit/);
   });
 });

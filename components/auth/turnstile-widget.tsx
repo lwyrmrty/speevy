@@ -1,197 +1,69 @@
 'use client';
 
-import { forwardRef, memo, useEffect, useImperativeHandle, useRef } from 'react';
-
-// Explicit mode only. Loading api.js with class `cf-turnstile` also auto-renders,
-// and a second turnstile.render() call crashes the login page on iOS Safari.
-export const TURNSTILE_SCRIPT_SRC =
-  'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-
-type TurnstileRenderOptions = {
-  sitekey: string;
-  'error-callback'?: () => void;
-};
-
-type TurnstileApi = {
-  render: (container: HTMLElement, options: TurnstileRenderOptions) => string;
-  reset: (widgetId?: string) => void;
-  remove: (widgetId: string) => void;
-};
-
-declare global {
-  interface Window {
-    turnstile?: TurnstileApi;
-  }
-}
+import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 
 export type TurnstileHandle = {
   reset: () => void;
 };
 
-let scriptPromise: Promise<void> | null = null;
-let errorGuardInstalled = false;
+type TurnstileFrameMessage = {
+  source?: unknown;
+  type?: unknown;
+  token?: unknown;
+};
 
-function isTurnstileNoise(value: unknown): boolean {
-  return /turnstile|challenges\.cloudflare\.com/i.test(String(value ?? ''));
+function isTurnstileFrameMessage(value: unknown): value is TurnstileFrameMessage {
+  return Boolean(value) && typeof value === 'object';
 }
 
-function isolateTurnstileErrors() {
-  if (typeof window === 'undefined' || errorGuardInstalled) return;
-  errorGuardInstalled = true;
+export const TurnstileWidget = forwardRef<TurnstileHandle>(function TurnstileWidget(
+  _props,
+  ref,
+) {
+  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? '';
+  const [token, setToken] = useState('');
+  const [frameNonce, setFrameNonce] = useState(0);
 
-  window.addEventListener(
-    'error',
-    (event) => {
-      if (
-        isTurnstileNoise(event.message)
-        || isTurnstileNoise(event.filename)
-        || isTurnstileNoise(event.error)
-      ) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
-    },
-    true,
+  useImperativeHandle(
+    ref,
+    () => ({
+      reset() {
+        setToken('');
+        setFrameNonce((current) => current + 1);
+      },
+    }),
+    [],
   );
 
-  window.addEventListener(
-    'unhandledrejection',
-    (event) => {
-      const reason = event.reason;
-      const message = reason instanceof Error ? reason.message : reason;
-      if (isTurnstileNoise(message)) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
-    },
-    true,
-  );
-}
-
-if (typeof window !== 'undefined') {
-  isolateTurnstileErrors();
-}
-
-function loadTurnstileScript(): Promise<void> {
-  if (typeof window === 'undefined' || window.turnstile) {
-    return Promise.resolve();
-  }
-
-  if (scriptPromise) {
-    return scriptPromise;
-  }
-
-  scriptPromise = new Promise((resolve, reject) => {
-    const fail = () => {
-      scriptPromise = null;
-      reject(new Error('Turnstile failed to load'));
-    };
-
-    const succeed = () => {
-      if (window.turnstile) {
-        resolve();
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      if (!isTurnstileFrameMessage(event.data)) return;
+      if (event.data.source !== 'speevy-turnstile') return;
+      if (event.data.type === 'token' && typeof event.data.token === 'string') {
+        setToken(event.data.token);
         return;
       }
-      fail();
-    };
-
-    const existing = document.querySelector<HTMLScriptElement>(
-      `script[src="${TURNSTILE_SCRIPT_SRC}"]`,
-    );
-
-    if (existing) {
-      existing.addEventListener('load', succeed, { once: true });
-      existing.addEventListener('error', fail, { once: true });
-      if (window.turnstile) {
-        succeed();
+      if (event.data.type === 'error') {
+        setToken('');
       }
-      return;
     }
 
-    const script = document.createElement('script');
-    script.src = TURNSTILE_SCRIPT_SRC;
-    script.async = true;
-    script.addEventListener('load', succeed, { once: true });
-    script.addEventListener('error', fail, { once: true });
-    document.head.appendChild(script);
-  });
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
 
-  return scriptPromise;
-}
+  if (!siteKey) return null;
 
-function resetWidget(widgetId: string | null) {
-  try {
-    if (!window.turnstile || !widgetId) return;
-    window.turnstile.reset(widgetId);
-  } catch {
-    // Widget may already be gone.
-  }
-}
-
-function removeWidget(widgetId: string | null) {
-  try {
-    if (!widgetId) return;
-    window.turnstile?.remove(widgetId);
-  } catch {
-    // Widget may already be gone.
-  }
-}
-
-export const TurnstileWidget = memo(
-  forwardRef<TurnstileHandle>(function TurnstileWidget(_props, ref) {
-    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? '';
-    const hostRef = useRef<HTMLDivElement>(null);
-    const widgetIdRef = useRef<string | null>(null);
-
-    useImperativeHandle(
-      ref,
-      () => ({
-        reset() {
-          resetWidget(widgetIdRef.current);
-        },
-      }),
-      [],
-    );
-
-    useEffect(() => {
-      isolateTurnstileErrors();
-      const host = hostRef.current;
-      if (!siteKey || !host) return;
-
-      const mount = document.createElement('div');
-      host.appendChild(mount);
-
-      let cancelled = false;
-
-      loadTurnstileScript()
-        .then(() => {
-          if (cancelled || !mount.isConnected || !window.turnstile) return;
-          try {
-            widgetIdRef.current = window.turnstile.render(mount, {
-              sitekey: siteKey,
-              'error-callback': () => {
-                // Keep the page alive. The server action fails closed without a token.
-              },
-            });
-          } catch {
-            // Fail closed without crashing login.
-          }
-        })
-        .catch(() => {
-          // No token is posted. The server action fails closed.
-        });
-
-      return () => {
-        cancelled = true;
-        const widgetId = widgetIdRef.current;
-        widgetIdRef.current = null;
-        removeWidget(widgetId);
-        mount.remove();
-      };
-    }, [siteKey]);
-
-    if (!siteKey) return null;
-
-    return <div ref={hostRef} />;
-  }),
-);
+  return (
+    <>
+      <input type="hidden" name="cf-turnstile-response" value={token} />
+      <iframe
+        key={frameNonce}
+        title="Verification"
+        src={`/turnstile-frame.html?sitekey=${encodeURIComponent(siteKey)}`}
+        style={{ width: '100%', height: 80, border: 0, overflow: 'hidden' }}
+      />
+    </>
+  );
+});

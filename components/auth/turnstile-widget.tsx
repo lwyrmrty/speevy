@@ -29,6 +29,48 @@ export type TurnstileHandle = {
 };
 
 let scriptPromise: Promise<void> | null = null;
+let errorGuardInstalled = false;
+
+function isTurnstileNoise(value: unknown): boolean {
+  return /turnstile|challenges\.cloudflare\.com/i.test(String(value ?? ''));
+}
+
+function isolateTurnstileErrors() {
+  if (typeof window === 'undefined' || errorGuardInstalled) return;
+  errorGuardInstalled = true;
+
+  window.addEventListener(
+    'error',
+    (event) => {
+      if (
+        isTurnstileNoise(event.message)
+        || isTurnstileNoise(event.filename)
+        || isTurnstileNoise(event.error)
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    },
+    true,
+  );
+
+  window.addEventListener(
+    'unhandledrejection',
+    (event) => {
+      const reason = event.reason;
+      const message = reason instanceof Error ? reason.message : reason;
+      if (isTurnstileNoise(message)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    },
+    true,
+  );
+}
+
+if (typeof window !== 'undefined') {
+  isolateTurnstileErrors();
+}
 
 function loadTurnstileScript(): Promise<void> {
   if (typeof window === 'undefined' || window.turnstile) {
@@ -112,6 +154,7 @@ export const TurnstileWidget = memo(
     );
 
     useEffect(() => {
+      isolateTurnstileErrors();
       const host = hostRef.current;
       if (!siteKey || !host) return;
 

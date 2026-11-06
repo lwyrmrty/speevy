@@ -1,6 +1,13 @@
 'use client';
 
-import { useActionState, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useActionState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 
 import type { AuthActionState } from '@/app/login/actions';
 import { sendLoginCode, verifyLoginCode } from '@/app/login/actions';
@@ -30,6 +37,7 @@ export function OtpLoginForm({
   submitLabel = 'Send code',
 }: OtpLoginFormProps) {
   const [email, setEmail] = useState(initialEmail);
+  const [hydrated, setHydrated] = useState(false);
   const [codeRequested, setCodeRequested] = useState(false);
   const sendTurnstileRef = useRef<TurnstileHandle>(null);
   const verifyTurnstileRef = useRef<TurnstileHandle>(null);
@@ -66,11 +74,25 @@ export function OtpLoginForm({
   );
 
   useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
     if (sendState.status === 'success' && sendState.email) {
       setCodeRequested(true);
       setEmail(sendState.email);
     }
   }, [sendState]);
+
+  function handleSendSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    sendAction(new FormData(event.currentTarget));
+  }
+
+  function handleVerifySubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    verifyAction(new FormData(event.currentTarget));
+  }
 
   const activeMessage =
     verifyState.message || sendState.message || 'Use your invited email address.';
@@ -78,7 +100,7 @@ export function OtpLoginForm({
 
   return (
     <div className="space-y-5">
-      <form action={sendAction} className="space-y-4">
+      <form onSubmit={handleSendSubmit} className="space-y-4">
         <div className="space-y-2">
           <label htmlFor="email" className="text-sm font-medium text-ink">
             Email address
@@ -102,14 +124,14 @@ export function OtpLoginForm({
           type="submit"
           size="lg"
           className="h-12 w-full rounded-xl bg-harbor text-base hover:bg-ink"
-          disabled={sendPending}
+          disabled={!hydrated || sendPending}
         >
           {sendPending ? 'Sending...' : submitLabel}
         </Button>
       </form>
 
       {codeRequested ? (
-        <form action={verifyAction} className="space-y-4 rounded-2xl border border-border bg-white/80 p-4 shadow-sm">
+        <form onSubmit={handleVerifySubmit} className="space-y-4 rounded-2xl border border-border bg-white/80 p-4 shadow-sm">
           <input type="hidden" name="email" value={email} />
           <div className="space-y-2">
             <label htmlFor="code" className="text-sm font-medium text-ink">
@@ -132,7 +154,7 @@ export function OtpLoginForm({
             type="submit"
             size="lg"
             className="h-12 w-full rounded-xl bg-copper text-base text-white hover:bg-copper/90"
-            disabled={verifyPending}
+            disabled={!hydrated || verifyPending}
           >
             {verifyPending ? 'Verifying...' : 'Continue'}
           </Button>

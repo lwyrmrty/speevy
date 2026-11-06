@@ -9,6 +9,7 @@ import {
   useTransition,
   type ChangeEvent,
   type ClipboardEvent,
+  type FormEvent,
   type KeyboardEvent,
 } from 'react';
 
@@ -25,6 +26,7 @@ const CODE_LENGTH = 6;
 
 export function WebflowLoginForm() {
   const [email, setEmail] = useState('');
+  const [hydrated, setHydrated] = useState(false);
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [digits, setDigits] = useState<string[]>(
     Array.from({ length: CODE_LENGTH }, () => ''),
@@ -61,11 +63,25 @@ export function WebflowLoginForm() {
   );
 
   useEffect(() => {
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
     if (sendState.status === 'success' && sendState.email) {
       setEmail(sendState.email);
       setStep('code');
     }
   }, [sendState]);
+
+  function handleSendSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    sendAction(new FormData(event.currentTarget));
+  }
+
+  function handleVerifySubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    verifyAction(new FormData(event.currentTarget));
+  }
 
   useEffect(() => {
     if (step === 'code') {
@@ -143,7 +159,7 @@ export function WebflowLoginForm() {
 
     return (
       <div className="formblock w-form">
-        <form action={sendAction} className="loginform">
+        <form onSubmit={handleSendSubmit} className="loginform">
           <div>
             <div className="loginheader">Login</div>
             <div className="loginsubheader">
@@ -175,7 +191,7 @@ export function WebflowLoginForm() {
             type="submit"
             className="button w-button"
             value={sendPending ? 'Please wait…' : 'Get Login Code'}
-            disabled={sendPending}
+            disabled={!hydrated || sendPending}
           />
         </form>
         {message ? (
@@ -195,7 +211,7 @@ export function WebflowLoginForm() {
 
   return (
     <div className="formblock w-form">
-      <form ref={codeFormRef} action={verifyAction} className="loginform">
+      <form ref={codeFormRef} onSubmit={handleVerifySubmit} className="loginform">
         <div>
           <div className="loginheader">Check your email</div>
           <div className="loginsubheader">
@@ -234,8 +250,8 @@ export function WebflowLoginForm() {
         <input
           type="submit"
           className="button w-button"
-          value={verifyPending ? 'Please wait…' : 'Go to account'}
-          disabled={verifyPending || code.length < CODE_LENGTH}
+            value={verifyPending ? 'Please wait…' : 'Go to account'}
+            disabled={!hydrated || verifyPending || code.length < CODE_LENGTH}
         />
         <div className="loginsubheader">
           Didn&#x27;t receive the email? Check spam or{' '}

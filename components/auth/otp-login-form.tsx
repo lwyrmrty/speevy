@@ -17,6 +17,7 @@ import {
 } from '@/app/invite/[token]/actions';
 import { TurnstileWidget, type TurnstileHandle } from '@/components/auth/turnstile-widget';
 import { Button } from '@/components/ui/button';
+import { runAuthAction } from '@/lib/auth/run-auth-action';
 
 const initialState: AuthActionState = {
   status: 'idle',
@@ -47,7 +48,7 @@ export function OtpLoginForm({
   const sendWithReset = useCallback(
     async (previous: AuthActionState, formData: FormData) => {
       try {
-        return await sendActionForFlow(previous, formData);
+        return await runAuthAction(sendActionForFlow, previous, formData);
       } finally {
         sendTurnstileRef.current?.reset();
       }
@@ -57,7 +58,7 @@ export function OtpLoginForm({
   const verifyWithReset = useCallback(
     async (previous: AuthActionState, formData: FormData) => {
       try {
-        return await verifyActionForFlow(previous, formData);
+        return await runAuthAction(verifyActionForFlow, previous, formData);
       } finally {
         verifyTurnstileRef.current?.reset();
       }

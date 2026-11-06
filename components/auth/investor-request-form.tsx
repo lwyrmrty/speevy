@@ -17,6 +17,7 @@ import {
 } from '@/app/join/[token]/actions';
 import { TurnstileWidget, type TurnstileHandle } from '@/components/auth/turnstile-widget';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
+import { runAuthAction } from '@/lib/auth/run-auth-action';
 
 const initialState: InvestorRequestActionState = {
   status: 'idle',
@@ -68,7 +69,7 @@ export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
   const submitRequest = useCallback(
     async (previous: InvestorRequestActionState, formData: FormData) => {
       try {
-        return await submitInvestorRequest(previous, formData);
+        return await runAuthAction(submitInvestorRequest, previous, formData);
       } finally {
         turnstileRef.current?.reset();
       }

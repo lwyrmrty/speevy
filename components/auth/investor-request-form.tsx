@@ -15,7 +15,13 @@ import {
   submitInvestorRequest,
   type InvestorRequestActionState,
 } from '@/app/join/[token]/actions';
-import { TurnstileWidget, type TurnstileHandle } from '@/components/auth/turnstile-widget';
+import {
+  attachTurnstileToken,
+  shouldResetTurnstile,
+  TURNSTILE_WAIT_MESSAGE,
+  TurnstileWidget,
+  type TurnstileHandle,
+} from '@/components/auth/turnstile-widget';
 import { WebflowSectorIcon } from '@/components/webflow/sector-icon';
 import { runAuthAction } from '@/lib/auth/run-auth-action';
 
@@ -66,13 +72,14 @@ function DropdownIcon({ open }: { open: boolean }) {
 
 export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
   const turnstileRef = useRef<TurnstileHandle>(null);
+  const [challengeMessage, setChallengeMessage] = useState('');
   const submitRequest = useCallback(
     async (previous: InvestorRequestActionState, formData: FormData) => {
-      try {
-        return await runAuthAction(submitInvestorRequest, previous, formData);
-      } finally {
+      const result = await runAuthAction(submitInvestorRequest, previous, formData);
+      if (shouldResetTurnstile(result.message)) {
         turnstileRef.current?.reset();
       }
+      return result;
     },
     [],
   );
@@ -93,8 +100,8 @@ export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
   const [priorHarpoonInvestor, setPriorHarpoonInvestor] = useState(true);
   const [hydrated, setHydrated] = useState(false);
 
-  const hasMessage = Boolean(state.message);
-  const isError = state.status === 'error';
+  const hasMessage = Boolean(challengeMessage || state.message);
+  const isError = Boolean(challengeMessage) || state.status === 'error';
   const selectedSectorCount = selectedSectors.length;
   const minRangeIndex = rangeValueToIndex(investmentRange[0]);
   const maxRangeIndex = rangeValueToIndex(investmentRange[1]);
@@ -107,7 +114,13 @@ export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    action(new FormData(event.currentTarget));
+    const formData = new FormData(event.currentTarget);
+    if (!attachTurnstileToken(formData, turnstileRef.current)) {
+      setChallengeMessage(TURNSTILE_WAIT_MESSAGE);
+      return;
+    }
+    setChallengeMessage('');
+    action(formData);
   }
 
   useEffect(() => {
@@ -388,7 +401,7 @@ export function InvestorRequestForm({ token }: InvestorRequestFormProps) {
 
       {hasMessage && isError ? (
         <div className="w-form-fail signup-message visible">
-          <div>{state.message}</div>
+          <div>{challengeMessage || state.message}</div>
         </div>
       ) : null}
 

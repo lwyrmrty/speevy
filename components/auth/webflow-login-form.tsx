@@ -15,7 +15,13 @@ import {
 
 import type { AuthActionState } from '@/app/login/actions';
 import { sendLoginCode, verifyLoginCode } from '@/app/login/actions';
-import { TurnstileWidget, type TurnstileHandle } from '@/components/auth/turnstile-widget';
+import {
+  attachTurnstileToken,
+  shouldResetTurnstile,
+  TURNSTILE_WAIT_MESSAGE,
+  TurnstileWidget,
+  type TurnstileHandle,
+} from '@/components/auth/turnstile-widget';
 import { runAuthAction } from '@/lib/auth/run-auth-action';
 
 const initialState: AuthActionState = {
@@ -35,23 +41,24 @@ export function WebflowLoginForm() {
   const inputsRef = useRef<Array<HTMLInputElement | null>>([]);
   const emailTurnstileRef = useRef<TurnstileHandle>(null);
   const codeTurnstileRef = useRef<TurnstileHandle>(null);
-  const codeFormRef = useRef<HTMLFormElement>(null);
   const [, startTransition] = useTransition();
 
+  const [challengeMessage, setChallengeMessage] = useState('');
+
   const sendLogin = useCallback(async (previous: AuthActionState, formData: FormData) => {
-    try {
-      return await runAuthAction(sendLoginCode, previous, formData);
-    } finally {
+    const result = await runAuthAction(sendLoginCode, previous, formData);
+    if (shouldResetTurnstile(result.message)) {
       emailTurnstileRef.current?.reset();
       codeTurnstileRef.current?.reset();
     }
+    return result;
   }, []);
   const verifyLogin = useCallback(async (previous: AuthActionState, formData: FormData) => {
-    try {
-      return await runAuthAction(verifyLoginCode, previous, formData);
-    } finally {
+    const result = await runAuthAction(verifyLoginCode, previous, formData);
+    if (shouldResetTurnstile(result.message)) {
       codeTurnstileRef.current?.reset();
     }
+    return result;
   }, []);
 
   const [sendState, sendAction, sendPending] = useActionState(
@@ -76,12 +83,24 @@ export function WebflowLoginForm() {
 
   function handleSendSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    sendAction(new FormData(event.currentTarget));
+    const formData = new FormData(event.currentTarget);
+    if (!attachTurnstileToken(formData, emailTurnstileRef.current)) {
+      setChallengeMessage(TURNSTILE_WAIT_MESSAGE);
+      return;
+    }
+    setChallengeMessage('');
+    sendAction(formData);
   }
 
   function handleVerifySubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    verifyAction(new FormData(event.currentTarget));
+    const formData = new FormData(event.currentTarget);
+    if (!attachTurnstileToken(formData, codeTurnstileRef.current)) {
+      setChallengeMessage(TURNSTILE_WAIT_MESSAGE);
+      return;
+    }
+    setChallengeMessage('');
+    verifyAction(formData);
   }
 
   useEffect(() => {
@@ -140,10 +159,11 @@ export function WebflowLoginForm() {
     if (!email) return;
     const formData = new FormData();
     formData.set('email', email);
-    const token = codeFormRef.current?.querySelector<HTMLInputElement>(
-      'input[name="cf-turnstile-response"]',
-    )?.value;
-    if (token) formData.set('cf-turnstile-response', token);
+    if (!attachTurnstileToken(formData, codeTurnstileRef.current)) {
+      setChallengeMessage(TURNSTILE_WAIT_MESSAGE);
+      return;
+    }
+    setChallengeMessage('');
     startTransition(() => {
       sendAction(formData);
     });
@@ -155,8 +175,8 @@ export function WebflowLoginForm() {
   }
 
   if (step === 'email') {
-    const message = sendState.message;
-    const isError = sendState.status === 'error';
+    const message = challengeMessage || sendState.message;
+    const isError = Boolean(challengeMessage) || sendState.status === 'error';
 
     return (
       <div className="formblock w-form">
@@ -207,12 +227,12 @@ export function WebflowLoginForm() {
     );
   }
 
-  const message = verifyState.message || sendState.message;
-  const isError = verifyState.status === 'error';
+  const message = challengeMessage || verifyState.message || sendState.message;
+  const isError = Boolean(challengeMessage) || verifyState.status === 'error';
 
   return (
     <div className="formblock w-form">
-      <form ref={codeFormRef} onSubmit={handleVerifySubmit} className="loginform">
+      <form onSubmit={handleVerifySubmit} className="loginform">
         <div>
           <div className="loginheader">Check your email</div>
           <div className="loginsubheader">

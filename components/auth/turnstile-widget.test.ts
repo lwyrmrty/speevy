@@ -18,4 +18,13 @@ describe('TurnstileWidget', () => {
     assert.equal(/data-sitekey/.test(widgetSource), false);
     assert.match(frameSource, /api\.js\?render=explicit/);
   });
+
+  it('copies the iframe token onto the form and retries until the parent acks', () => {
+    assert.match(widgetSource, /getToken/);
+    assert.match(widgetSource, /attachTurnstileToken/);
+    assert.match(widgetSource, /__speevyTurnstileToken/);
+    assert.match(frameSource, /__speevyTurnstileToken/);
+    assert.match(frameSource, /event\.data\.type === 'ack'/);
+    assert.match(frameSource, /getElementsByName\('cf-turnstile-response'\)/);
+  });
 });

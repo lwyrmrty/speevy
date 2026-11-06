@@ -15,7 +15,13 @@ import {
   sendInviteCode,
   verifyInviteCode,
 } from '@/app/invite/[token]/actions';
-import { TurnstileWidget, type TurnstileHandle } from '@/components/auth/turnstile-widget';
+import {
+  attachTurnstileToken,
+  shouldResetTurnstile,
+  TURNSTILE_WAIT_MESSAGE,
+  TurnstileWidget,
+  type TurnstileHandle,
+} from '@/components/auth/turnstile-widget';
 import { Button } from '@/components/ui/button';
 import { runAuthAction } from '@/lib/auth/run-auth-action';
 
@@ -40,6 +46,7 @@ export function OtpLoginForm({
   const [email, setEmail] = useState(initialEmail);
   const [hydrated, setHydrated] = useState(false);
   const [codeRequested, setCodeRequested] = useState(false);
+  const [challengeMessage, setChallengeMessage] = useState('');
   const sendTurnstileRef = useRef<TurnstileHandle>(null);
   const verifyTurnstileRef = useRef<TurnstileHandle>(null);
   const sendActionForFlow = flow === 'invite' ? sendInviteCode : sendLoginCode;
@@ -47,21 +54,21 @@ export function OtpLoginForm({
     flow === 'invite' ? verifyInviteCode : verifyLoginCode;
   const sendWithReset = useCallback(
     async (previous: AuthActionState, formData: FormData) => {
-      try {
-        return await runAuthAction(sendActionForFlow, previous, formData);
-      } finally {
+      const result = await runAuthAction(sendActionForFlow, previous, formData);
+      if (shouldResetTurnstile(result.message)) {
         sendTurnstileRef.current?.reset();
       }
+      return result;
     },
     [sendActionForFlow],
   );
   const verifyWithReset = useCallback(
     async (previous: AuthActionState, formData: FormData) => {
-      try {
-        return await runAuthAction(verifyActionForFlow, previous, formData);
-      } finally {
+      const result = await runAuthAction(verifyActionForFlow, previous, formData);
+      if (shouldResetTurnstile(result.message)) {
         verifyTurnstileRef.current?.reset();
       }
+      return result;
     },
     [verifyActionForFlow],
   );
@@ -87,17 +94,35 @@ export function OtpLoginForm({
 
   function handleSendSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    sendAction(new FormData(event.currentTarget));
+    const formData = new FormData(event.currentTarget);
+    if (!attachTurnstileToken(formData, sendTurnstileRef.current)) {
+      setChallengeMessage(TURNSTILE_WAIT_MESSAGE);
+      return;
+    }
+    setChallengeMessage('');
+    sendAction(formData);
   }
 
   function handleVerifySubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    verifyAction(new FormData(event.currentTarget));
+    const formData = new FormData(event.currentTarget);
+    if (!attachTurnstileToken(formData, verifyTurnstileRef.current)) {
+      setChallengeMessage(TURNSTILE_WAIT_MESSAGE);
+      return;
+    }
+    setChallengeMessage('');
+    verifyAction(formData);
   }
 
   const activeMessage =
-    verifyState.message || sendState.message || 'Use your invited email address.';
-  const isError = verifyState.status === 'error' || sendState.status === 'error';
+    challengeMessage ||
+    verifyState.message ||
+    sendState.message ||
+    'Use your invited email address.';
+  const isError =
+    Boolean(challengeMessage) ||
+    verifyState.status === 'error' ||
+    sendState.status === 'error';
 
   return (
     <div className="space-y-5">

@@ -16,4 +16,10 @@ describe('WebflowLoginForm', () => {
     assert.match(source, /onSubmit=\{handleSendSubmit\}/);
     assert.match(source, /onSubmit=\{handleVerifySubmit\}/);
   });
+
+  it('attaches the Turnstile token at submit time instead of trusting a stale hidden input', () => {
+    assert.match(source, /attachTurnstileToken\(formData, emailTurnstileRef/);
+    assert.match(source, /attachTurnstileToken\(formData, codeTurnstileRef/);
+    assert.match(source, /shouldResetTurnstile\(result\.message\)/);
+  });
 });

@@ -20,15 +20,52 @@
       (function () {
         var sitekey = new URLSearchParams(location.search).get('sitekey') || '';
         var rendered = false;
+        var lastType = '';
+        var lastToken = '';
+        var ack = false;
+        window.__speevyTurnstileToken = '';
 
-        function notify(type, token) {
-          if (window.parent && window.parent !== window) {
-            window.parent.postMessage(
-              { source: 'speevy-turnstile', type: type, token: token || '' },
-              location.origin,
-            );
+        function writeParent(token) {
+          try {
+            var inputs = window.parent.document.getElementsByName('cf-turnstile-response');
+            for (var i = 0; i < inputs.length; i += 1) {
+              inputs[i].value = token || '';
+            }
+          } catch (error) {
+            // Parent document may not be reachable yet.
           }
         }
+
+        function post() {
+          if (!window.parent || window.parent === window) return;
+          try {
+            window.parent.postMessage(
+              { source: 'speevy-turnstile', type: lastType, token: lastToken },
+              '*',
+            );
+          } catch (error) {
+            // Retry on the interval below.
+          }
+          writeParent(lastToken);
+        }
+
+        function notify(type, token) {
+          lastType = type;
+          lastToken = token || '';
+          window.__speevyTurnstileToken = lastToken;
+          ack = false;
+          post();
+        }
+
+        window.addEventListener('message', function (event) {
+          if (event.origin !== location.origin) return;
+          if (!event.data || event.data.source !== 'speevy-turnstile') return;
+          if (event.data.type === 'ack') ack = true;
+        });
+
+        setInterval(function () {
+          if (lastType && !ack) post();
+        }, 250);
 
         function renderWidget() {
           if (rendered || !sitekey || !window.turnstile) return;

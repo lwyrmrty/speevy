@@ -119,7 +119,7 @@ export function OtpLoginForm({
           />
         </div>
 
-        <TurnstileWidget ref={sendTurnstileRef} />
+        {hydrated ? <TurnstileWidget ref={sendTurnstileRef} /> : null}
         <Button
           type="submit"
           size="lg"
@@ -149,7 +149,7 @@ export function OtpLoginForm({
               className="h-12 w-full rounded-xl border border-input bg-white px-4 text-center font-mono text-2xl tracking-[0.4em] text-ink shadow-sm outline-none transition placeholder:text-muted-foreground focus:border-copper focus:ring-4 focus:ring-copper/15"
             />
           </div>
-          <TurnstileWidget ref={verifyTurnstileRef} />
+          {hydrated ? <TurnstileWidget ref={verifyTurnstileRef} /> : null}
           <Button
             type="submit"
             size="lg"

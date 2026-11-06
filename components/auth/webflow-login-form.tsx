@@ -186,7 +186,7 @@ export function WebflowLoginForm() {
               required
             />
           </div>
-          <TurnstileWidget ref={emailTurnstileRef} />
+          {hydrated ? <TurnstileWidget ref={emailTurnstileRef} /> : null}
           <input
             type="submit"
             className="button w-button"
@@ -246,7 +246,7 @@ export function WebflowLoginForm() {
             ))}
           </div>
         </div>
-        <TurnstileWidget ref={codeTurnstileRef} />
+        {hydrated ? <TurnstileWidget ref={codeTurnstileRef} /> : null}
         <input
           type="submit"
           className="button w-button"

@@ -1,11 +1,19 @@
 'use client';
 
-import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { forwardRef, memo, useEffect, useImperativeHandle, useRef } from 'react';
 
-const TURNSTILE_SCRIPT_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+// Explicit mode only. Loading api.js with class `cf-turnstile` also auto-renders,
+// and a second turnstile.render() call crashes the login page on iOS Safari.
+export const TURNSTILE_SCRIPT_SRC =
+  'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+
+type TurnstileRenderOptions = {
+  sitekey: string;
+  'error-callback'?: () => void;
+};
 
 type TurnstileApi = {
-  render: (container: HTMLElement, options: { sitekey: string }) => string;
+  render: (container: HTMLElement, options: TurnstileRenderOptions) => string;
   reset: (widgetId?: string) => void;
   remove: (widgetId: string) => void;
 };
@@ -32,76 +40,115 @@ function loadTurnstileScript(): Promise<void> {
   }
 
   scriptPromise = new Promise((resolve, reject) => {
+    const fail = () => {
+      scriptPromise = null;
+      reject(new Error('Turnstile failed to load'));
+    };
+
+    const succeed = () => {
+      if (window.turnstile) {
+        resolve();
+        return;
+      }
+      fail();
+    };
+
     const existing = document.querySelector<HTMLScriptElement>(
       `script[src="${TURNSTILE_SCRIPT_SRC}"]`,
     );
-    const script = existing ?? document.createElement('script');
 
-    script.addEventListener('load', () => resolve(), { once: true });
-    script.addEventListener(
-      'error',
-      () => {
-        scriptPromise = null;
-        reject(new Error('Turnstile failed to load'));
-      },
-      { once: true },
-    );
-
-    if (!existing) {
-      script.src = TURNSTILE_SCRIPT_SRC;
-      script.async = true;
-      script.defer = true;
-      document.head.appendChild(script);
+    if (existing) {
+      existing.addEventListener('load', succeed, { once: true });
+      existing.addEventListener('error', fail, { once: true });
+      if (window.turnstile) {
+        succeed();
+      }
+      return;
     }
+
+    const script = document.createElement('script');
+    script.src = TURNSTILE_SCRIPT_SRC;
+    script.async = true;
+    script.addEventListener('load', succeed, { once: true });
+    script.addEventListener('error', fail, { once: true });
+    document.head.appendChild(script);
   });
 
   return scriptPromise;
 }
 
-export const TurnstileWidget = forwardRef<TurnstileHandle>(function TurnstileWidget(_props, ref) {
-  const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? '';
-  const containerRef = useRef<HTMLDivElement>(null);
-  const widgetIdRef = useRef<string | null>(null);
+function resetWidget(widgetId: string | null) {
+  try {
+    if (!window.turnstile || !widgetId) return;
+    window.turnstile.reset(widgetId);
+  } catch {
+    // Widget may already be gone.
+  }
+}
 
-  useImperativeHandle(ref, () => ({
-    reset() {
-      if (!window.turnstile) return;
-      const widgetId = widgetIdRef.current;
-      if (widgetId) {
-        window.turnstile.reset(widgetId);
-        return;
-      }
-      window.turnstile.reset();
-    },
-  }), []);
+function removeWidget(widgetId: string | null) {
+  try {
+    if (!widgetId) return;
+    window.turnstile?.remove(widgetId);
+  } catch {
+    // Widget may already be gone.
+  }
+}
 
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!siteKey || !container) return;
+export const TurnstileWidget = memo(
+  forwardRef<TurnstileHandle>(function TurnstileWidget(_props, ref) {
+    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? '';
+    const hostRef = useRef<HTMLDivElement>(null);
+    const widgetIdRef = useRef<string | null>(null);
 
-    let cancelled = false;
+    useImperativeHandle(
+      ref,
+      () => ({
+        reset() {
+          resetWidget(widgetIdRef.current);
+        },
+      }),
+      [],
+    );
 
-    loadTurnstileScript()
-      .then(() => {
-        if (cancelled || !container.isConnected || !window.turnstile) return;
-        if (container.querySelector('iframe') || widgetIdRef.current) return;
-        widgetIdRef.current = window.turnstile.render(container, { sitekey: siteKey });
-      })
-      .catch(() => {
-        // No token is posted. The server action fails closed.
-      });
+    useEffect(() => {
+      const host = hostRef.current;
+      if (!siteKey || !host) return;
 
-    return () => {
-      cancelled = true;
-      const widgetId = widgetIdRef.current;
-      widgetIdRef.current = null;
-      if (widgetId) {
-        window.turnstile?.remove(widgetId);
-      }
-    };
-  }, [siteKey]);
+      const mount = document.createElement('div');
+      host.appendChild(mount);
 
-  if (!siteKey) return null;
+      let cancelled = false;
 
-  return <div ref={containerRef} className="cf-turnstile" data-sitekey={siteKey} />;
-});
+      loadTurnstileScript()
+        .then(() => {
+          if (cancelled || !mount.isConnected || !window.turnstile) return;
+          try {
+            widgetIdRef.current = window.turnstile.render(mount, {
+              sitekey: siteKey,
+              'error-callback': () => {
+                // Keep the page alive. The server action fails closed without a token.
+              },
+            });
+          } catch {
+            // Fail closed without crashing login.
+          }
+        })
+        .catch(() => {
+          // No token is posted. The server action fails closed.
+        });
+
+      return () => {
+        cancelled = true;
+        const widgetId = widgetIdRef.current;
+        widgetIdRef.current = null;
+        removeWidget(widgetId);
+        mount.remove();
+      };
+    }, [siteKey]);
+
+    if (!siteKey) return null;
+
+    return <div ref={hostRef} />;
+  }),
+);

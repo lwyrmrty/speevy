@@ -152,7 +152,15 @@ export const TurnstileWidget = forwardRef<TurnstileHandle>(function TurnstileWid
         key={frameNonce}
         title="Verification"
         src={`/turnstile-frame.html?sitekey=${encodeURIComponent(siteKey)}`}
-        style={{ width: '100%', height: 80, border: 0, overflow: 'hidden' }}
+        style={{
+          width: '100%',
+          height: 70,
+          border: 0,
+          overflow: 'hidden',
+          position: 'relative',
+          zIndex: 0,
+          pointerEvents: token ? 'none' : 'auto',
+        }}
       />
     </>
   );

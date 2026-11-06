@@ -73,6 +73,7 @@
           try {
             window.turnstile.render(document.getElementById('widget'), {
               sitekey: sitekey,
+              size: 'flexible',
               callback: function (token) {
                 notify('token', token);
               },
